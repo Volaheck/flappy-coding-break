@@ -63,6 +63,28 @@ test("pipes score once and colliding with their body ends play", () => {
   assert.equal(game.phase, "over")
 })
 
+test("the duck collides through its plane, its body, its wing and its tail, not around them", () => {
+  const { BIRD_BOXES, BIRD_X, GAP, PIPE_W } = require("../game/core.cjs").constants
+  const hits = (birdY, gap, x = BIRD_X - PIPE_W / 2) => {
+    const game = createGame(() => {}, { random: () => 0.5 })
+    game.press()
+    game.nextPipe = Infinity
+    game.pipes.push({ x, gap, scored: true })
+    game.bird.y = birdY
+    game.bird.vy = 0
+    game.step(STEP)
+    return game.phase === "over"
+  }
+  const lowest = Math.max(...BIRD_BOXES.map((box) => box[3]))
+  const highest = Math.min(...BIRD_BOXES.map((box) => box[1]))
+  assert.equal(hits(200, 200), false)
+  assert.equal(hits(200 + (GAP / 2 - lowest) + 2, 200), true, "the wing reaches the lower crates")
+  assert.equal(hits(200 - (GAP / 2 + highest) - 2, 200), true, "the duck's head reaches the upper crates")
+  const nose = Math.max(...BIRD_BOXES.map((box) => box[2]))
+  assert.equal(hits(140, 200, BIRD_X + nose - 1), true, "the nose meets a column ahead")
+  assert.equal(hits(140, 200, BIRD_X + nose + 3), false)
+})
+
 for (const paused of [false, true]) {
   test(`agent completion saves an unfinished ${paused ? "paused" : "playing"} round and locks input`, () => {
     const scores = []

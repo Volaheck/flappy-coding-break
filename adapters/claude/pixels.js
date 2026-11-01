@@ -1,10 +1,10 @@
 import { constants } from "./core.js"
 import { CITY, CLOUDS } from "./art.js"
-import { DUCK_PIXELS, duckFrame } from "./duck.js"
+import { duckRaster } from "./duck.js"
 import { CITY_OFFSETS, hexToRgb, mixRgb, outlineAt, rgbToHex, wrap } from "./field.js"
 import { THEME } from "./theme.js"
 
-const { GROUND_Y, BIRD_X, DUCK_SIZE, PIPE_W, GAP } = constants
+const { GROUND_Y, BIRD_X, PIPE_W, GAP } = constants
 const ART = THEME.artScale
 const CRATE = THEME.crate
 const SKY = [hexToRgb(THEME.sky.inner), hexToRgb(THEME.sky.outer)]
@@ -48,8 +48,9 @@ function paint(game, width, height) {
   const top = (height / scale - constants.WORLD_H) * constants.TOP_SHARE
   const pixels = new Array(width * height).fill(null)
   const span = height / scale
-  const grid = duckGrid(duckFrame(game))
-  const pixel = DUCK_SIZE / DUCK_PIXELS
+  const raster = duckRaster(game)
+  const grid = duckGrid(raster.rows)
+  const { pixel, span: duckSpan } = raster
   for (let column = left; column < right; column++) {
     const x = (column + 0.5 - left) / scale
     const band = THEME.band.y + outlineAt(CLOUDS.points, wrap(x / ART, CLOUDS.width)) * ART
@@ -58,8 +59,8 @@ function paint(game, width, height) {
     for (let row = 0; row < height; row++) {
       const y = (row + 0.5) / scale - top
       let color
-      const duckX = Math.floor((x - BIRD_X + DUCK_SIZE / 2) / pixel)
-      const duckY = Math.floor((y - game.bird.y + DUCK_SIZE / 2) / pixel)
+      const duckX = Math.floor((x - BIRD_X + duckSpan / 2) / pixel)
+      const duckY = Math.floor((y - game.bird.y + duckSpan / 2) / pixel)
       if (duckY >= 0 && duckY < grid.length && duckX >= 0) color = grid[duckY][duckX]
       if (!color && pipe && y < GROUND_Y + 6) {
         const gapTop = pipe.gap - GAP / 2

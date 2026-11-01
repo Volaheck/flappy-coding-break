@@ -1,12 +1,11 @@
 import { constants } from "./core.js"
-import { DUCK_PIXELS, duckFrame } from "./duck.js"
+import { duckRaster } from "./duck.js"
 import { hexToRgb, mixRgb, rgbToHex, sceneAt } from "./field.js"
-import { phraseKind, THEME } from "./theme.js"
+import { phraseKind, STREAKS, streakAt, THEME } from "./theme.js"
 
-const { GROUND_Y, BIRD_X, DUCK_SIZE, PIPE_W, GAP, RESTART_DELAY } = constants
+const { GROUND_Y, BIRD_X, PIPE_W, GAP, RESTART_DELAY } = constants
 const { crate: CRATE, ui: UI } = THEME
 const EPSILON = 1e-4
-const PIXEL = DUCK_SIZE / DUCK_PIXELS
 
 // A crate as Desktop draws it: horizontal parts across its width, vertical parts down its height, in its
 // own 0..PIPE_W units; the planked panel sits where both are "panel".
@@ -42,7 +41,7 @@ function runs(cells, Box, dim = 0) {
 const spacer = (Box, size) => Box({ flexGrow: grow(Math.max(0, size)) })
 // Every layer is placed by explicit cells over the board rows, so it lands on the board whichever box it is
 // measured from.
-const layer = (Box, view, children) => Box({ position: "absolute", top: 0, left: 0, width: "100%", height: view.rows, flexDirection: "row", children })
+const layer = (Box, view, key, children, flexDirection = "row") => Box({ key, position: "absolute", top: 0, left: 0, width: "100%", height: view.rows, flexDirection, children })
 
 // The part of one crate between `top` and `bottom` of its own height, cut across to [from, to].
 function crate(top, bottom, from, to, Box, dim) {
@@ -86,45 +85,68 @@ function cratesLayer(game, view, Box, dim) {
     children.push(Box({ flexDirection: "column", flexGrow: grow(to - from), children: column }))
   }
   children.push(spacer(Box, view.field - cursor), spacer(Box, view.width - view.left - view.field))
-  return layer(Box, view, children)
+  return layer(Box, view, "crates", children)
 }
 
 function duckLayer(game, view, Box, dim) {
-  const left = BIRD_X - DUCK_SIZE / 2
-  const top = game.bird.y - DUCK_SIZE / 2
+  const { rows: raster, pixel, span } = duckRaster(game)
+  const left = BIRD_X - span / 2
+  const top = game.bird.y - span / 2
   const rows = []
   let skipped = 0
   let trailing = 0
-  duckFrame(game).forEach((runsOfRow, row) => {
-    const y = top + row * PIXEL
-    const outside = y + view.top < 0 || y + PIXEL + view.top > view.height
+  raster.forEach((runsOfRow, row) => {
+    const y = top + row * pixel
+    const outside = y + view.top < 0 || y + pixel + view.top > view.height
     if (outside || runsOfRow.length === 0) {
       if (rows.length === 0) skipped++
       else trailing++
       return
     }
-    for (; trailing > 0; trailing--) rows.push(spacer(Box, PIXEL))
+    for (; trailing > 0; trailing--) rows.push(spacer(Box, pixel))
     const cells = []
     let x = 0
     for (const run of runsOfRow) {
-      const width = run.length * PIXEL
+      const width = run.length * pixel
       if (run.hex) cells.push({ width, hex: run.hex })
-      else if (run.rgb) cells.push({ width, hex: rgbToHex(mixRgb(sceneAt(game, view, left + x + width / 2, y + PIXEL / 2), run.rgb, run.alpha)) })
+      else if (run.rgb) cells.push({ width, hex: rgbToHex(mixRgb(sceneAt(game, view, left + x + width / 2, y + pixel / 2), run.rgb, run.alpha)) })
       else cells.push({ width, hex: null })
       x += width
     }
-    cells.push({ width: DUCK_SIZE - x, hex: null })
-    rows.push(Box({ flexDirection: "row", flexGrow: grow(PIXEL), children: runs(cells, Box, dim) }))
+    cells.push({ width: span - x, hex: null })
+    rows.push(Box({ flexDirection: "row", flexGrow: grow(pixel), children: runs(cells, Box, dim) }))
   })
-  const above = top + skipped * PIXEL + view.top
-  return layer(Box, view, [
+  const above = top + skipped * pixel + view.top
+  return layer(Box, view, "duck", [
     spacer(Box, view.left + left),
     Box({
-      flexDirection: "column", flexGrow: grow(DUCK_SIZE),
-      children: [spacer(Box, above), ...rows, spacer(Box, view.height - above - rows.length * PIXEL)],
+      flexDirection: "column", flexGrow: grow(span),
+      children: [spacer(Box, above), ...rows, spacer(Box, view.height - above - rows.length * pixel)],
     }),
-    spacer(Box, view.width - view.left - left - DUCK_SIZE),
+    spacer(Box, view.width - view.left - left - span),
   ])
+}
+
+// Speed lines stream back from the plane while it flies, each blended into the scene behind it.
+function streaksLayer(game, view, Box, dim) {
+  const children = []
+  let cursor = 0
+  for (const line of STREAKS.map((streak) => streakAt(streak, game.time)).sort((a, b) => a.y - b.y)) {
+    const y = game.bird.y + line.y - 0.9 + view.top
+    if (y < cursor || y + 1.8 > view.height) continue
+    const behind = sceneAt(game, view, BIRD_X + (line.from + line.to) / 2, game.bird.y + line.y)
+    children.push(spacer(Box, y - cursor), Box({
+      flexDirection: "row", flexGrow: 1.8,
+      children: [
+        spacer(Box, view.left + BIRD_X + line.from),
+        Box({ flexGrow: grow(line.to - line.from), backgroundColor: veil(rgbToHex(mixRgb(behind, [255, 255, 255], line.alpha)), dim) }),
+        spacer(Box, view.width - view.left - BIRD_X - line.to),
+      ],
+    }))
+    cursor = y + 1.8
+  }
+  children.push(spacer(Box, view.height - cursor))
+  return layer(Box, view, "streaks", children, "column")
 }
 
 // How much of black veils the scene: Flappy Duck darkens it under a result and the pause screen.
@@ -136,7 +158,8 @@ export function sceneDim(game) {
 // The moving part of the Desktop board, drawn over the pane's still SVG scenery: absolute layers sized to the board.
 export function drawScene(game, view, { Box }) {
   const dim = sceneDim(game)
-  return [cratesLayer(game, view, Box, dim), duckLayer(game, view, Box, dim)]
+  const flying = game.phase === "ready" || game.phase === "playing"
+  return [cratesLayer(game, view, Box, dim), ...(flying ? [streaksLayer(game, view, Box, dim)] : []), duckLayer(game, view, Box, dim)]
 }
 
 function phrase(game, t) {

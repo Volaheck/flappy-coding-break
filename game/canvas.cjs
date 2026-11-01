@@ -2,8 +2,8 @@
 
 const { createGame } = require("./core.cjs")
 const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, MIN_W, MAX_W, TOP_SHARE, BIRD_X, DUCK_SIZE, PIPE_W, GAP, RESTART_DELAY } = require("./constants.cjs")
-const { DUCK_SHEET, CITY, CLOUDS } = require("./art.cjs")
-const { THEME, phraseKind } = require("./theme.cjs")
+const { DUCK, CITY, CLOUDS } = require("./art.cjs")
+const { THEME, STREAKS, phraseKind, duckTilt, duckScale, streakAt } = require("./theme.cjs")
 
 const BEST_KEY = "opencode.flappybird.best"
 const SCORE_KEY = "flappy-coding-break.lastScore"
@@ -61,22 +61,22 @@ function paintTile(width, height, k, paint) {
   return { surface, sx: width / surface.width, sy: height / surface.height }
 }
 
-// The duck sheet decodes once per page; views that drew before it landed redraw when it does.
-let duckSheet
+// The duck decodes once per page; views that drew before it landed redraw when it does.
+let duckImage
 const duckWaiters = new Set()
 
 function loadDuck(wake) {
-  if (!duckSheet) {
-    duckSheet = new Image()
-    duckSheet.decoding = "async"
-    duckSheet.onload = () => {
+  if (!duckImage) {
+    duckImage = new Image()
+    duckImage.decoding = "async"
+    duckImage.onload = () => {
       for (const waiter of duckWaiters) waiter()
       duckWaiters.clear()
     }
-    duckSheet.src = DUCK_SHEET.src
+    duckImage.src = DUCK.src
   }
-  if (!duckSheet.complete) duckWaiters.add(wake)
-  return duckSheet
+  if (!duckImage.complete) duckWaiters.add(wake)
+  return duckImage
 }
 
 function paintCity(layer, k) {
@@ -406,17 +406,50 @@ function createView(game, t, status, wake, touch) {
     g.fillRect(0, band + CLOUDS.height * ART - 0.5, field, WORLD_H + layout.bottom - band - CLOUDS.height * ART + 1.5)
   }
 
-  function drawBird(alpha) {
-    const sheet = loadDuck(wake)
-    if (!sheet.complete || sheet.naturalWidth === 0) return
-    const bird = game.bird
-    const frame = Math.floor(game.time * DUCK_SHEET.fps) % DUCK_SHEET.frames
-    const source = DUCK_SHEET.frame
-    const angle = lerp(bird.prevAngle, bird.angle, alpha)
+  // Speed lines stream back from the plane as the air does, level whatever its lean.
+  function drawStreaks(y) {
+    g.fillStyle = "#ffffff"
+    for (const streak of STREAKS) {
+      const line = streakAt(streak, game.time)
+      g.globalAlpha = line.alpha
+      g.beginPath()
+      g.roundRect(BIRD_X + line.from, y + line.y - 0.9, line.to - line.from, 1.8, 0.9)
+      g.fill()
+    }
+    g.globalAlpha = 1
+  }
+
+  // Two blades whirl over the drawn propeller's blur while the plane flies.
+  function drawPropeller() {
+    const [hubX, hubY] = DUCK.hub
     g.save()
-    g.translate(BIRD_X, lerp(bird.prevY, bird.y, alpha))
-    g.rotate(game.phase === "over" ? angle : Math.min(angle, 1.1) * 0.6)
-    g.drawImage(sheet, (frame % DUCK_SHEET.columns) * source, Math.floor(frame / DUCK_SHEET.columns) * source, source, source, -DUCK_SIZE / 2, -DUCK_SIZE / 2, DUCK_SIZE, DUCK_SIZE)
+    g.translate(hubX - DUCK.center[0], hubY - DUCK.center[1])
+    g.rotate(0.25)
+    g.fillStyle = "rgba(255, 255, 255, 0.55)"
+    for (const offset of [0, Math.PI / 2]) {
+      const reach = (DUCK.blade / 2) * Math.abs(Math.cos(game.time * 46 + offset))
+      g.beginPath()
+      g.ellipse(0, 0, 1.8, Math.max(2, reach), 0, 0, Math.PI * 2)
+      g.fill()
+    }
+    g.restore()
+  }
+
+  function drawBird(alpha) {
+    const sprite = loadDuck(wake)
+    if (!sprite.complete || sprite.naturalWidth === 0) return
+    const bird = game.bird
+    const phase = game.phase
+    const y = lerp(bird.prevY, bird.y, alpha)
+    const flying = phase === "ready" || phase === "playing"
+    if (flying) drawStreaks(y)
+    const scale = (DUCK_SIZE / DUCK.size) * duckScale(phase, bird.wing)
+    g.save()
+    g.translate(BIRD_X, y)
+    g.rotate(duckTilt(phase, lerp(bird.prevAngle, bird.angle, alpha)))
+    g.scale(scale, scale)
+    g.drawImage(sprite, -DUCK.center[0], -DUCK.center[1], DUCK.size, DUCK.size)
+    if (flying || phase === "paused") drawPropeller()
     g.restore()
   }
 

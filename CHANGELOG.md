@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1
+
+- Animate the duck in code instead of the sprite sheet: one still frame, cleaned of its baked speed lines and centred on the collider, so it no longer jerks between frames or drifts inside its hitbox.
+- Lean the duck with its climb and fall and nose-dive it on a crash on every surface (Claude Desktop and the terminal through pre-tilted rasters), pop it slightly on a flap, stream speed lines behind it while it flies, and whirl the propeller on Canvas.
+- Collide through the drawing as measured: the fuselage, the duck, the lower wing and the tail fin.
+- Shrink the Canvas bundles from about 250 KB to 70 KB.
+
 ## 1.5.0
 
 - Restyle the game after Flappy Duck in every app: an animated duck pilot in its plane, columns of crates, a radial blue sky over a two-layer city skyline, and a band of clouds to land on.

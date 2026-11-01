@@ -52,8 +52,20 @@ export const THEME = {
     "statusBgSolid": "#e4e4e9"
   }
 }
-export const phraseKind = function phraseKind(score, record) {
+export const STREAKS = [{"y":3,"length":22,"phase":0},{"y":10,"length":15,"phase":0.4},{"y":-4,"length":17,"phase":0.72}]
+export function phraseKind(score, record) {
   if (record) return "record"
   if (score === 0) return "zero"
   return score <= 35 ? "normal" : "good"
+}
+export function duckTilt(phase, angle) {
+  return phase === "over" ? angle : Math.max(-0.26, Math.min(0.66, angle * 0.6))
+}
+export function duckScale(phase, wing) {
+  return phase === "playing" ? 1 + 0.07 * Math.max(0, 1 - wing / 2.4) : 1
+}
+export function streakAt(streak, time) {
+  const progress = (time * 1.6 + streak.phase) % 1
+  const end = -24 - progress * 30
+  return { from: end - streak.length, to: end, y: streak.y, alpha: 0.55 * (1 - progress) }
 }

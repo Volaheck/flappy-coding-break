@@ -10,11 +10,13 @@ const MIN_W = 260
 const MAX_W = 400
 const TOP_SHARE = 0.62
 const BIRD_X = 84
-const BIRD_R = 11
-// The duck in its plane, drawn DUCK_SIZE across, collides through two boxes around its centre: the
-// plane's body and the duck sitting in it, as in Flappy Duck, trimmed a little to forgive grazes.
+// The ground stops the duck when its centre is this close, as the plane's belly meets the clouds.
+const BIRD_R = 16
+// The duck in its plane, drawn DUCK_SIZE across, collides through boxes around its centre (the middle of
+// the fuselage): the fuselage, the duck sitting in it, the lower wing and the tail fin, each trimmed a
+// little inside the drawing to forgive grazes.
 const DUCK_SIZE = 62
-const BIRD_BOXES = [[-25.5, -8, 28, 10.5], [-9.5, -23.5, 8.5, 10.5]]
+const BIRD_BOXES = [[-21, -6, 21, 6], [-13.5, -25.5, 8.5, -4], [-9.5, 6, 6.5, 21.5], [-28, -13, -15.5, 1.5]]
 const READY_Y = 214
 const CEILING = -20
 const GRAVITY = 1500

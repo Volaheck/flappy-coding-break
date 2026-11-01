@@ -102,7 +102,7 @@ npm run test:claude
 npm pack --dry-run
 ```
 
-Графика (утка, ящики, город и облака) взята из Flappy Duck; `node scripts/import-duck-art.mjs <чекаут flappy-duck-frontend>` переимпортирует её в `game/art.cjs`, нужны ImageMagick и `cwebp`. Палитра и раскладка, общие для всех отрисовок, — в `game/theme.cjs`.
+Графика (утка, ящики, город и облака) взята из Flappy Duck; `node scripts/import-duck-art.mjs <чекаут flappy-duck-frontend>` переимпортирует её в `game/art.cjs` и `game/duck-frames.cjs`, нужны ImageMagick и `cwebp`. Палитра и раскладка, общие для всех отрисовок, — в `game/theme.cjs`.
 
 Внешних npm-зависимостей для работы нет, экспорт `./gui-experimental` — один готовый CommonJS-файл. Общая физика — `game/core.cjs`, Canvas-отрисовка — `game/canvas.cjs`, переводы — `game/i18n.cjs`. Интеграции расположены в `adapters/`.
 

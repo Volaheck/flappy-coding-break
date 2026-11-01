@@ -31,6 +31,27 @@ const THEME = {
   },
 }
 
+// The duck moves only as the physics moves it: it leans with its climb or fall while it flies and takes
+// the full nose-dive once it has crashed, in radians.
+function duckTilt(phase, angle) {
+  return phase === "over" ? angle : Math.max(-0.26, Math.min(0.66, angle * 0.6))
+}
+
+// A flap pops the duck up a little in size, settling as it climbs; `wing` is the core's time since the flap.
+function duckScale(phase, wing) {
+  return phase === "playing" ? 1 + 0.07 * Math.max(0, 1 - wing / 2.4) : 1
+}
+
+// Speed lines trailing the plane while it flies: each slides back from the tail and fades over its cycle.
+// x is the line's span and y its height, in world units from the duck's centre.
+const STREAKS = [{ y: 3, length: 22, phase: 0 }, { y: 10, length: 15, phase: 0.4 }, { y: -4, length: 17, phase: 0.72 }]
+
+function streakAt(streak, time) {
+  const progress = (time * 1.6 + streak.phase) % 1
+  const end = -24 - progress * 30
+  return { from: end - streak.length, to: end, y: streak.y, alpha: 0.55 * (1 - progress) }
+}
+
 // Flappy Duck's result phrases fall into these bands of score.
 function phraseKind(score, record) {
   if (record) return "record"
@@ -38,4 +59,4 @@ function phraseKind(score, record) {
   return score <= 35 ? "normal" : "good"
 }
 
-module.exports = { THEME, phraseKind }
+module.exports = { THEME, STREAKS, phraseKind, duckTilt, duckScale, streakAt }

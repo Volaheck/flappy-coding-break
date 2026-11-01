@@ -5,8 +5,9 @@ import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import { register } from "../adapters/claude/register.js"
 import FlappyClient from "../adapters/claude/client.js"
-import { createGame } from "../adapters/claude/core.js"
-import { duckFrame } from "../adapters/claude/duck.js"
+import { constants, createGame } from "../adapters/claude/core.js"
+import { boardAspect, fieldLayout } from "../adapters/claude/field.js"
+import { duckRaster } from "../adapters/claude/duck.js"
 
 const PANE = "flappy-coding-break"
 const elements = Object.fromEntries(["Box", "Text", "Button", "Client", "Svg"].map((type) => [type, (props) => ({ type, props })]))
@@ -538,11 +539,45 @@ test("Claude desktop duck has smoothed edges finished against what lies behind i
   draw()
   const game = client.surface.state.game
   game.bird.y = 200
-  const opaque = new Set(duckFrame(game).flat().map((run) => run.hex).filter(Boolean))
-  const duck = draw().props.children.filter((child) => child.props.position === "absolute")[1]
+  const opaque = new Set(duckRaster(game).rows.flat().map((run) => run.hex).filter(Boolean))
+  const duck = draw().props.children.find((child) => child.props.key === "duck")
   const colors = allElements(duck).map((element) => element.props.backgroundColor).filter(Boolean)
   assert.ok(colors.filter((color) => opaque.has(color)).length > 100)
   assert.ok(colors.filter((color) => !opaque.has(color)).length > 20)
+})
+
+test("Claude desktop draws the duck from its physics alone, centred on its collider", () => {
+  const { client, draw } = desktopClient()
+  draw()
+  const game = client.surface.state.game
+  client.key("w")
+  const layerOf = () => JSON.stringify(draw().props.children.find((child) => child.props.key === "duck"))
+  const pose = () => Object.assign(game.bird, { y: 210, angle: 0.2, wing: 9 })
+  pose()
+  game.time = 1.3
+  const first = layerOf()
+  pose()
+  game.time = 2.71
+  assert.equal(layerOf(), first)
+  const duck = draw().props.children.find((child) => child.props.key === "duck")
+  const [leftSpacer, column, rightSpacer] = duck.props.children
+  const span = column.props.flexGrow
+  const total = leftSpacer.props.flexGrow + span + rightSpacer.props.flexGrow
+  const view = fieldLayout(boardAspect(27, 28))
+  assert.ok(Math.abs(total - view.width) < 0.01)
+  assert.ok(Math.abs(leftSpacer.props.flexGrow + span / 2 - (view.left + constants.BIRD_X)) < 0.01)
+})
+
+test("Claude desktop leans the duck with its flight and dives it when it crashes", () => {
+  const game = createGame(() => {}, {})
+  game.press()
+  const tilted = (angle, phase = "playing") => duckRaster({ ...game, phase, bird: { ...game.bird, angle, wing: 9 } }).rows
+  assert.notEqual(JSON.stringify(tilted(-0.42)), JSON.stringify(tilted(0)))
+  assert.equal(JSON.stringify(tilted(1.5)), JSON.stringify(tilted(1.1)))
+  assert.notEqual(JSON.stringify(tilted(Math.PI / 2, "over")), JSON.stringify(tilted(1.1)))
+  const fresh = duckRaster({ ...game, phase: "playing", bird: { ...game.bird, angle: 0, wing: 0 } })
+  const settled = duckRaster({ ...game, phase: "playing", bird: { ...game.bird, angle: 0, wing: 9 } })
+  assert.ok(fresh.span > settled.span)
 })
 
 test("Claude desktop veils the moving board as Flappy Duck darkens results and the pause screen", async () => {
