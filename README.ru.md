@@ -2,7 +2,7 @@
 
 Играй во Flappy Bird, пока агент пишет код. Один репозиторий, общая игра и три интеграции.
 
-[English](README.md)
+[English](README.md) · **Установка:** [людям](#людям) · [ИИ-агентам](#для-ии-агентов)
 
 | Приложение | Где работает игра | Управление |
 | --- | --- | --- |
@@ -14,7 +14,7 @@
 
 ## Установка
 
-**Людям** — в своём приложении:
+### Людям
 
 - **Claude Desktop:** **+** у поля ввода → **Plugins** → **Add marketplace** `Volaheck/flappy-coding-break` → **Add plugin** → команда `/reload-plugins`.
 - **Claude Code (терминал):** `claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break`, затем новая сессия.
@@ -23,17 +23,24 @@
 
 Игра открывается сама, пока агент работает. Вручную — `/flappy` (Claude, OpenCode) или попроси Codex «Открой Flappy Bird».
 
-**Агентам** — выполни строку для приложения пользователя и подскажи, как подгрузить плагин:
+### Для ИИ-агентов
 
-```sh
-claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
-codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
-opencode plugin add github:Volaheck/flappy-coding-break
-```
+1. Выполни команду для приложения, в котором работаешь:
 
-Подгрузка: `/reload-plugins` в Claude, перезапуск Codex (и разрешение хуков) или OpenCode. Если CLI приложения нет в `PATH`, дай пользователю шаги выше; внутри Claude Desktop на macOS работает CLI самого приложения: `~/Library/Application Support/Claude/claude-code/<версия>/<сборка>/claude.app/Contents/MacOS/claude`.
+   ```sh
+   # Claude Code или Claude Desktop
+   claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+   # Codex
+   codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
+   # OpenCode
+   opencode plugin add github:Volaheck/flappy-coding-break
+   ```
 
-**Требования и варианты**
+2. Команды нет в `PATH`? В Claude Desktop на macOS запусти CLI самого приложения — путь даёт `ls -d ~/Library/Application\ Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude | sort -V | tail -1`. Для другого приложения дай пользователю шаги [для людей](#людям).
+3. Скажи пользователю, как подгрузить плагин: `/reload-plugins` в Claude; перезапуск Codex и разрешение хуков плагина; перезапуск OpenCode.
+4. Обновление позже в Claude: `claude plugin update flappy-coding-break@flappy-coding-break`, затем `/reload-plugins`.
+
+### Требования и варианты
 
 - **Claude Code** 2.1.292+; команда `/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break` внутри сессии работает с 2.1.275. [Документация плагинов](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command)
 - **Codex** — desktop-версия с MCP Apps UI и Node.js 20+ в `PATH`. Для живого статуса агента разреши хуки плагина (`/hooks` или настройки хуков приложения). [Справочник команд](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)

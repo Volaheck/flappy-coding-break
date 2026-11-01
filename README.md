@@ -2,7 +2,7 @@
 
 Play Flappy Bird while your coding agent works. One repository, one shared game, three integrations.
 
-[Русская версия](README.ru.md)
+[Русская версия](README.ru.md) · **Install:** [for people](#for-people) · [for AI agents](#for-ai-agents)
 
 | Harness | Game surface | Controls |
 | --- | --- | --- |
@@ -14,7 +14,7 @@ The game never opens an external browser or window. The Codex CLI and Claude Cod
 
 ## Install
 
-**People** — in your app:
+### For people
 
 - **Claude Desktop:** **+** next to the message box → **Plugins** → **Add marketplace** `Volaheck/flappy-coding-break` → **Add plugin** → run `/reload-plugins`.
 - **Claude Code (terminal):** `claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break`, then start a new session.
@@ -23,17 +23,24 @@ The game never opens an external browser or window. The Codex CLI and Claude Cod
 
 The game opens by itself while the agent works. Open it any time with `/flappy` (Claude, OpenCode) or by asking Codex to “Open Flappy Bird”.
 
-**Agents** — run the line for the user's app, then tell them how to load it:
+### For AI agents
 
-```sh
-claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
-codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
-opencode plugin add github:Volaheck/flappy-coding-break
-```
+1. Run the command for the app you are running in:
 
-Loading: `/reload-plugins` in Claude, a restart in Codex (plus hook trust) or OpenCode. If the app's CLI is not on `PATH`, give the user the steps above; inside Claude Desktop on macOS the app's own CLI works: `~/Library/Application Support/Claude/claude-code/<version>/<build>/claude.app/Contents/MacOS/claude`.
+   ```sh
+   # Claude Code or Claude Desktop
+   claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+   # Codex
+   codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
+   # OpenCode
+   opencode plugin add github:Volaheck/flappy-coding-break
+   ```
 
-**Requirements and options**
+2. No such command on `PATH`? In Claude Desktop on macOS, run the app's own CLI, found with `ls -d ~/Library/Application\ Support/Claude/claude-code/*/*/claude.app/Contents/MacOS/claude | sort -V | tail -1`. For another app, give the user the steps [for people](#for-people).
+3. Tell the user how to load it: `/reload-plugins` in Claude; restart Codex and trust the plugin's hooks; restart OpenCode.
+4. To update later in Claude: `claude plugin update flappy-coding-break@flappy-coding-break`, then `/reload-plugins`.
+
+### Requirements and options
 
 - **Claude Code** 2.1.292+; the in-session `/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break` works from 2.1.275. [Plugin docs](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command)
 - **Codex** desktop with MCP Apps UI and Node.js 20+ on `PATH`. Live agent status needs the plugin's hooks trusted (`/hooks` or the app's hook controls). [Command reference](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)
