@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.3
+
+- Keep Claude Desktop play smooth: the pane draws only the still scenery as SVG, once, and the game module draws the pipes, ground and bird locally at sub-cell precision, so no frame waits on a round trip through the plugin.
+
 ## 1.3.2
 
 - Draw the Claude Desktop game as a vector scene matching the Canvas version: the pane renders each frame the game posts as SVG, with the game's text and click area laid over it. The terminal keeps its half-block renderer.

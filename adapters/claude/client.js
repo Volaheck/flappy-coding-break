@@ -1,7 +1,7 @@
 import { createGame, constants } from "./core.js"
 import { translate } from "./i18n.js"
 import { drawBoard } from "./pixels.js"
-import { frameOf } from "./svg.js"
+import { drawScene } from "./scene.js"
 
 const FRAME_MS = 1000 / 30
 const flapKeys = new Set([" ", "w", "W", "up", "return", "enter"])
@@ -11,7 +11,6 @@ function createRuntime(props, surface) {
   const publish = () => {
     const game = runtime.game
     const data = { type: "state", phase: game.phase, animating: game.animating(), score: game.score, best: game.best, lastScore: game.lastScore }
-    if (runtime.props.surface === "desktop") data.frame = frameOf(game)
     const signature = JSON.stringify(data)
     if (signature !== runtime.lastState) {
       runtime.lastState = signature
@@ -107,5 +106,5 @@ export default function FlappyClient(props, surface) {
   ]
   return Box({ flexDirection: "column", children: bodyRows < 4
     ? chrome.slice(0, bodyRows)
-    : [chrome[0], ...(desktop ? [Box({ height: rows, flexShrink: 0 })] : drawBoard(game, columns, rows, surface.elements)), ...chrome.slice(1)] })
+    : [chrome[0], ...(desktop ? [drawScene(game, columns, rows, surface.elements)] : drawBoard(game, columns, rows, surface.elements)), ...chrome.slice(1)] })
 }

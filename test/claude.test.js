@@ -487,23 +487,20 @@ test("Claude native drawing stays inside the host body height, including tiny pa
   }
 })
 
-test("Claude desktop draws the board as a posted Svg scene while the terminal keeps half blocks", async () => {
+test("Claude desktop moves the board locally over a still Svg scene while the terminal keeps half blocks", async () => {
   for (const [surface, halfBlocks] of [["desktop", false], ["terminal", true]]) {
     const client = createSurface()
     const drawing = FlappyClient({ best: 0, locale: "en", focused: true, bodyRows: 29, surface }, client.surface)
     assert.equal(JSON.stringify(drawing).includes("▀"), halfBlocks)
-    assert.equal(client.posts.every((post) => post.frame !== undefined), !halfBlocks)
+    assert.equal(allElements(drawing).some((element) => element.type === "Box" && element.props.backgroundColor), !halfBlocks)
+    assert.ok(client.posts.every((post) => post.frame === undefined))
+    assert.ok(JSON.stringify(drawing).length < 100000)
   }
   const host = createHost()
-  const frame = { phase: "playing", score: 4, scroll: 300, y: 200, angle: -0.3, wing: 2, pipes: [[420, 250]] }
-  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "playing", animating: true, best: 0, score: 4, frame } })
-  const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
-  const source = allElements(tree).find((element) => element.type === "Svg").props.source
-  assert.ok(source.includes("#bird2"))
-  assert.ok(source.includes(">4</text>"))
-  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "playing", animating: true, best: 0, score: 5, frame: { ...frame, score: 5, pipes: "bad" } } })
-  const unchanged = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
-  assert.equal(allElements(unchanged).find((element) => element.type === "Svg").props.source, source)
+  const render = () => host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
+  const source = allElements(await render()).find((element) => element.type === "Svg").props.source
+  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "playing", animating: true, best: 0, score: 4 } })
+  assert.equal(allElements(await render()).find((element) => element.type === "Svg").props.source, source)
 })
 
 test("Claude pointer input is limited to the board and does not double-trigger pause controls", () => {

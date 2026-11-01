@@ -1,5 +1,6 @@
 import { translate } from "./i18n.js"
-import { drawScene, idleFrame } from "./svg.js"
+import { boardAspect } from "./field.js"
+import { drawBackdrop } from "./svg.js"
 
 const PANE = "flappy-coding-break"
 const SKILL = "flappy-coding-break:flappy"
@@ -10,15 +11,6 @@ const OWNER = "flappy.pane.owner"
 const OPEN_DELAY = 1000
 const OWNER_CHECK_MS = 1000
 const phases = new Set(["ready", "playing", "paused", "over", "finished"])
-// Desktop cells are about 2.2 times as tall as wide; a slightly taller scene is clipped at the dirt rather than leaving a gap.
-const DESKTOP_CELL_ASPECT = 2.3
-
-function validFrame(frame) {
-  const finite = (value) => typeof value === "number" && Number.isFinite(value)
-  return frame !== null && typeof frame === "object" && phases.has(frame.phase) && Number.isSafeInteger(frame.score)
-    && finite(frame.scroll) && finite(frame.y) && finite(frame.angle) && [0, 1, 2].includes(frame.wing)
-    && Array.isArray(frame.pipes) && frame.pipes.length <= 16 && frame.pipes.every((pipe) => Array.isArray(pipe) && pipe.length === 2 && pipe.every(finite))
-}
 
 function report($, error) {
   $.ui.log(`Flappy Bird: ${String(error)}`, { to: "debug" })
@@ -108,7 +100,6 @@ export function register(on, options = {}) {
     ownerTimer: undefined,
     ownerToken: undefined,
     checkingToken: undefined,
-    frame: idleFrame,
   }
   let finished = false
 
@@ -215,10 +206,10 @@ export function register(on, options = {}) {
     const rows = bodyRows - 4
     if (e.surface !== "desktop" || rows <= 0) return client
     const columns = Math.max(1, e.props.bodyColumns ?? e.viewport?.columns ?? 44)
-    // The Client draws the text above and below the scene and lies over it to take clicks on the board.
+    // The still scenery lies under the Client, which draws the text, the moving board and takes its clicks.
     return Box({ width: "100%", height: bodyRows, children: [
       Box({ position: "absolute", top: 1, left: 0, width: "100%", height: rows, overflow: "hidden", children: [
-        Svg({ source: drawScene(state.frame, (rows * DESKTOP_CELL_ASPECT) / columns), alt: "Flappy Bird" }),
+        Svg({ source: drawBackdrop(boardAspect(columns, rows)), alt: "Flappy Bird" }),
       ] }),
       Box({ position: "relative", width: "100%", height: bodyRows, children: [client] }),
     ] })
@@ -231,10 +222,6 @@ export function register(on, options = {}) {
     if (Number.isSafeInteger(data.score) && data.score >= 0) {
       state.latestScore = data.score
       state.latestPhase = data.phase
-    }
-    if (validFrame(data.frame)) {
-      state.frame = data.frame
-      $.ui.invalidate("ui.render")
     }
     const final = data.phase === "over" || data.phase === "finished"
     if (data.best > state.best || (final && data.lastScore !== state.lastScore)) await saveResult($, state, final ? data.lastScore : undefined, data.best)
