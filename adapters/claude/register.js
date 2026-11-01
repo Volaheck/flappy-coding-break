@@ -1,6 +1,7 @@
 import { translate } from "./i18n.js"
 
 const PANE = "flappy-coding-break"
+const SKILL = "flappy-coding-break:flappy"
 const CLIENT = "flappy-game"
 const BEST = "flappy.best"
 const LAST_SCORE = "flappy.lastScore"
@@ -164,6 +165,17 @@ export function register(on, options = {}) {
       await openPane($, state, { id: PANE, title: t("title"), focus: true, rows: 29, columns: 44 })
     }
     return {}
+  })
+
+  on("skill.prompt", async ($, e, next) => {
+    if (e.skill !== SKILL && !(e.pluginName === PANE && e.skill === "flappy")) return next(e)
+    if (!(await supported($))) return next(e)
+    state.generation++
+    cancelOpen()
+    if (!(await $.ui.panes()).some((pane) => pane.id === PANE)) {
+      await openPane($, state, { id: PANE, title: t("title"), focus: true, rows: 29, columns: 44 })
+    }
+    return { text: "The flappy-coding-break plugin has already opened the Flappy Bird pane beside this chat. Do not look for or call any tool for it. Reply with one short sentence in the user's language: the game is open in the side panel; click it or press W / Space to flap, P to pause." }
   })
 
   on("ui.render", { component: "Pane" }, async ($, e, next) => {

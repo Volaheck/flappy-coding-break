@@ -156,3 +156,18 @@ test('a newer pane claim closes this native pane and saves its latest reported s
   expect(closed.length).toBe(1)
   await ui.unmount()
 })
+
+test('the flappy skill opens the native pane and replaces the Codex instructions', async ($, on) => {
+  const opened = []
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.open', ($, e) => { opened.push(e); return { value: { isPlaced: true } } })
+  on('skill.prompt', ($, e) => ({ text: e.text }))
+  const result = await $.skill.prompt({ skill: 'flappy-coding-break:flappy', text: 'Use the open_flappy tool', pluginName: 'flappy-coding-break' })
+  expect(opened.length).toBe(1)
+  expect(opened[0].id).toBe('flappy-coding-break')
+  expect(result.text.includes('open_flappy')).toBe(false)
+  const other = await $.skill.prompt({ skill: 'commit', text: 'unchanged' })
+  expect(other.text).toBe('unchanged')
+  expect(opened.length).toBe(1)
+})

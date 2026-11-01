@@ -3,6 +3,8 @@ name: flappy
 description: Open the installed Flappy Coding Break game inside Codex when the user asks to play Flappy Bird or invokes $flappy.
 ---
 
+In Claude Code or Claude Desktop there is no `open_flappy` tool: the game is the plugin's native pane, which opens by itself while you work and toggles with `/flappy`. Do not search for tools there; tell the user in one short sentence where the game is.
+
 Use the `open_flappy` tool from the `flappy-coding-break` MCP server. It returns an embedded game and provides a Flappy Bird entrypoint in the current chat's side panel. Call it once, then continue any other requested work. Leave `auto_opened` false for a user-requested game; this flag records how the game was opened.
 
 The game requires Codex desktop with MCP Apps UI. The CLI has no game surface. If the host cannot render it, explain that limitation; never open an external browser or window.

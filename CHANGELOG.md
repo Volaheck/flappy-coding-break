@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1
+
+- Draw the Claude board with square pixels and a field width fitted to the pane, like the Canvas version; Claude Desktop uses a finer grid.
+- Redraw the Claude bird so its eye and beak read at small sizes.
+- Open the native pane when the `flappy` skill runs in Claude Code or Claude Desktop, instead of looking for the Codex-only `open_flappy` tool.
+
 ## 1.3.0
 
 - Keep only the newest Flappy panel open within each host, including panels from earlier chats.
