@@ -14,7 +14,7 @@ The game never opens an external browser or window. The Codex CLI and Claude Cod
 
 ## Install
 
-Use your app's native plugin manager. Run the commands below in your terminal with that app's CLI on `PATH`.
+Use your app's native plugin manager. Terminal commands require that app's CLI on `PATH`; Codex Desktop also supports installation through its interface.
 
 ### OpenCode Desktop
 
@@ -44,10 +44,16 @@ The in-session command is supported from 2.1.275 and asks you to confirm the mar
 
 ### Codex Desktop
 
+Open **Plugins → Add → Add a marketplace**. Set **Source** to `Volaheck/flappy-coding-break`, choose **Add marketplace**, then **Install** on **Flappy Coding Break**.
+
+Alternatively, if the `codex` CLI is available on `PATH`, run:
+
 ```sh
 codex plugin marketplace add Volaheck/flappy-coding-break
 codex plugin add flappy-coding-break@flappy-coding-break
 ```
+
+If your shell reports `command not found: codex`, the CLI is not available on `PATH`. Use the Desktop steps above or install/configure the CLI before running these commands.
 
 Codex requires two native steps: register the marketplace once, then install the plugin by name. Its `plugin add --marketplace` flag takes a registered marketplace name, not a GitHub repository. See the [Codex command reference](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
 

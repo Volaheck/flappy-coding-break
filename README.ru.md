@@ -14,7 +14,7 @@
 
 ## Установка
 
-Используй штатный менеджер плагинов своего приложения. Команды ниже выполняются в терминале; CLI выбранного приложения должен быть в `PATH`.
+Используй штатный менеджер плагинов своего приложения. Для команд терминала CLI выбранного приложения должен быть в `PATH`; в Codex Desktop можно установить плагин через интерфейс.
 
 ### OpenCode Desktop
 
@@ -44,10 +44,16 @@ claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-b
 
 ### Codex Desktop
 
+Открой **Plugins → Add → Add a marketplace**. В поле **Source** укажи `Volaheck/flappy-coding-break`, нажми **Add marketplace**, затем **Install** у **Flappy Coding Break**.
+
+Другой вариант — терминал, если команда `codex` доступна в `PATH`:
+
 ```sh
 codex plugin marketplace add Volaheck/flappy-coding-break
 codex plugin add flappy-coding-break@flappy-coding-break
 ```
+
+Если терминал сообщает `command not found: codex`, CLI недоступен в `PATH`. Используй интерфейс Desktop по инструкции выше либо установи и настрой CLI перед выполнением команд.
 
 В Codex установка состоит из двух штатных шагов: один раз добавить marketplace, затем установить плагин по имени. Флаг `plugin add --marketplace` принимает имя уже добавленного marketplace, а не адрес GitHub-репозитория. См. [справочник команд Codex](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
 
