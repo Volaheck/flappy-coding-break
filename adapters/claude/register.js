@@ -186,6 +186,7 @@ export function register(on, options = {}) {
         status: state.activeTurn ? "running" : finished ? "done" : "",
         focused: e.props.isFocused,
         bodyRows,
+        surface: e.surface,
       },
     })
   })

@@ -452,7 +452,8 @@ test("Claude reopens a completed response with its persisted score and best", as
 
 function measuredRows(element) {
   if (element.type === "Text" || element.type === "Button") return 1
-  const heights = element.props.children.map(measuredRows)
+  if (typeof element.props.height === "number") return element.props.height
+  const heights = (element.props.children ?? []).map(measuredRows)
   return element.props.flexDirection === "row" ? Math.max(0, ...heights) : heights.reduce((sum, value) => sum + value, 0)
 }
 
@@ -476,6 +477,18 @@ test("Claude native drawing stays inside the host body height, including tiny pa
     for (const element of allElements(drawing)) {
       assert.equal(element.props.mono, undefined)
       if (element.type === "Text" && element.props.children.some((child) => typeof child !== "string")) assert.equal(element.props.wrap, "truncate")
+    }
+  }
+})
+
+test("Claude desktop fills board cells with blocks while the terminal keeps half blocks", () => {
+  for (const [surface, halfBlocks] of [["desktop", false], ["terminal", true]]) {
+    const client = createSurface()
+    const drawing = FlappyClient({ best: 0, locale: "en", focused: true, bodyRows: 29, surface }, client.surface)
+    assert.equal(JSON.stringify(drawing).includes("▀"), halfBlocks)
+    if (!halfBlocks) {
+      const cells = allElements(drawing).filter((element) => element.type === "Box" && element.props.backgroundColor)
+      assert.ok(cells.length > 0)
     }
   }
 })

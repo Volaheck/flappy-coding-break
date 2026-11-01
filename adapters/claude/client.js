@@ -104,5 +104,5 @@ export default function FlappyClient(props, surface) {
   ]
   return Box({ flexDirection: "column", children: bodyRows < 4
     ? chrome.slice(0, bodyRows)
-    : [chrome[0], ...drawBoard(game, columns, rows, surface.elements), ...chrome.slice(1)] })
+    : [chrome[0], ...drawBoard(game, columns, rows, surface.elements, props.surface ?? "terminal"), ...chrome.slice(1)] })
 }

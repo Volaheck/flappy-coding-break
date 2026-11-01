@@ -10,7 +10,7 @@ const palette = {
   beak: "#f6662b", eye: "#ffffff",
 }
 
-export function drawBoard(game, columns, rows, { Text }) {
+export function drawBoard(game, columns, rows, elements, surface) {
   const height = rows * 2
   const width = constants.MAX_W
   const pixels = new Array(columns * height).fill(palette.sky)
@@ -74,19 +74,45 @@ export function drawBoard(game, columns, rows, { Text }) {
   rect(bx + 11, by + 3, 17, 7, palette.outline)
   rect(bx + 12, by + 4, 14, 4, palette.beak)
 
+  return surface === "terminal" ? halfBlockLines(pixels, columns, height, elements) : blockLines(pixels, columns, height, elements)
+}
+
+function runs(pixels, columns, from, sameRun) {
+  const result = []
+  let start = 0
+  while (start < columns) {
+    let end = start + 1
+    while (end < columns && sameRun(from + start, from + end)) end++
+    result.push([start, end])
+    start = end
+  }
+  return result
+}
+
+function halfBlockLines(pixels, columns, height, { Text }) {
   const lines = []
   for (let y = 0; y < height; y += 2) {
-    const spans = []
-    let start = 0
-    while (start < columns) {
-      const color = pixels[y * columns + start]
-      const backgroundColor = pixels[(y + 1) * columns + start]
-      let end = start + 1
-      while (end < columns && pixels[y * columns + end] === color && pixels[(y + 1) * columns + end] === backgroundColor) end++
-      spans.push(Text({ color, backgroundColor, children: ["▀".repeat(end - start)] }))
-      start = end
-    }
+    const top = y * columns
+    const bottom = top + columns
+    const spans = runs(pixels, columns, top, (a, b) => pixels[a] === pixels[b] && pixels[a + columns] === pixels[b + columns])
+      .map(([start, end]) => Text({ color: pixels[top + start], backgroundColor: pixels[bottom + start], children: ["▀".repeat(end - start)] }))
     lines.push(Text({ wrap: "truncate", children: spans }))
+  }
+  return lines
+}
+
+// A remote surface's line height exceeds a glyph's, so half blocks leave gaps; two filled halves per cell do not.
+function blockLines(pixels, columns, height, { Box }) {
+  const half = (row) => Box({
+    flexDirection: "row",
+    flexGrow: 1,
+    flexShrink: 1,
+    children: runs(pixels, columns, row * columns, (a, b) => pixels[a] === pixels[b])
+      .map(([start, end]) => Box({ width: end - start, flexShrink: 0, backgroundColor: pixels[row * columns + start] })),
+  })
+  const lines = []
+  for (let y = 0; y < height; y += 2) {
+    lines.push(Box({ flexDirection: "column", width: columns, height: 1, flexShrink: 0, children: [half(y), half(y + 1)] }))
   }
   return lines
 }

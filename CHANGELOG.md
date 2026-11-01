@@ -5,6 +5,7 @@
 - Keep only the newest Flappy panel open within each host, including panels from earlier chats.
 - Save the previous game's result before closing it when a new panel takes over.
 - Keep results visible after the agent responds; only opening another Flappy replaces them.
+- Draw the Claude Desktop board with filled cells instead of half-block glyphs, removing the striped gaps between rows.
 - Use the native Codex close action and fullscreen-only panels so replaced games close instead of becoming inline widgets.
 
 ## 1.2.2
