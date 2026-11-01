@@ -171,3 +171,19 @@ test('the flappy skill opens the native pane and replaces the Codex instructions
   expect(other.text).toBe('unchanged')
   expect(opened.length).toBe(1)
 })
+
+test('desktop draws each posted frame as an Svg scene the engine accepts', async ($, on) => {
+  on('ui.log', () => ({ value: undefined }))
+  const ui = await $.ui.mount({
+    plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
+    viewport: { columns: 60, rows: 40 },
+    props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 27, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
+  })
+  expect(await ui.find({ type: 'Svg' })).toBeDefined()
+  const frame = { phase: 'playing', score: 6, scroll: 300, y: 200, angle: -0.3, wing: 2, pipes: [[420, 250]] }
+  await ui.post({ type: 'state', phase: 'playing', animating: true, best: 0, score: 6, frame })
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn.includes('#bird2')).toBe(true)
+  expect(drawn.includes('>6</text>')).toBe(true)
+  await ui.unmount()
+})

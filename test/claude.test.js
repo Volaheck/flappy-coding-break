@@ -8,7 +8,7 @@ import FlappyClient from "../adapters/claude/client.js"
 import { createGame } from "../adapters/claude/core.js"
 
 const PANE = "flappy-coding-break"
-const elements = Object.fromEntries(["Box", "Text", "Button", "Client"].map((type) => [type, (props) => ({ type, props })]))
+const elements = Object.fromEntries(["Box", "Text", "Button", "Client", "Svg"].map((type) => [type, (props) => ({ type, props })]))
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve() }
 
 function createHost(options = {}, surfaces = ["desktop"], shared = {}) {
@@ -113,7 +113,7 @@ test("Claude auto-opens without taking focus and leaves completion results visib
   assert.equal(host.closed.length, 0)
   assert.equal(host.timers.size, 1, "ownership is checked only while the result pane remains open")
   const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
-  assert.equal(tree.props.props.status, "done")
+  assert.equal(clientOf(tree).props.props.status, "done")
 })
 
 test("Claude persists the final score without auto-closing, including legacy autoClose true", async () => {
@@ -145,12 +145,12 @@ test("Claude ignores subagent completions and stale main turns", async () => {
   assert.ok(host.panes.has(PANE))
   assert.equal(host.closed.length, 0)
   let tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
-  assert.equal(tree.props.props.status, "running")
+  assert.equal(clientOf(tree).props.props.status, "running")
   await host.emit("turn.complete", { turnId: "b", reason: "error", isAborted: false })
   await host.advance(1500)
   assert.ok(host.panes.has(PANE))
   tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
-  assert.equal(tree.props.props.status, "done")
+  assert.equal(clientOf(tree).props.props.status, "done")
 })
 
 test("Claude manually opened panes survive completion and manual close cancels pending timers", async () => {
@@ -198,9 +198,11 @@ test("Claude only accepts valid state and never lowers a saved record", async ()
 test("Claude pane loads a literal native Client module and forwards unrelated panes", async () => {
   const host = createHost()
   const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 30 } } })
-  assert.equal(tree.type, "Client")
-  assert.equal(tree.props.module, "./client.js")
-  assert.equal(tree.props.props.focused, true)
+  assert.equal(clientOf(tree).props.module, "./client.js")
+  assert.equal(clientOf(tree).props.props.focused, true)
+  assert.ok(allElements(tree).find((element) => element.type === "Svg").props.source.startsWith("<svg"))
+  const terminal = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "terminal", props: { isFocused: true, scroll: { bodyRows: 30 } } })
+  assert.equal(terminal.type, "Client")
   assert.deepEqual(await host.emit("ui.render", { component: "Pane", requestId: "other" }), { forwarded: true })
 })
 
@@ -264,13 +266,13 @@ test("the newest Claude pane refreshes the record saved when an older live game 
   await newer.emit("command.run", { command: "flappy" })
   const render = () => newer.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
   const client = createSurface()
-  FlappyClient((await render()).props.props, client.surface)
+  FlappyClient(clientOf(await render()).props.props, client.surface)
   assert.equal(client.surface.state.game.best, 0)
   await older.advance(1000)
   assert.equal(store.get("flappy.best"), 8)
   await newer.advance(1000)
   assert.deepEqual(newer.invalidations, ["ui.render"])
-  const updated = FlappyClient((await render()).props.props, client.surface)
+  const updated = FlappyClient(clientOf(await render()).props.props, client.surface)
   assert.equal(client.surface.state.game.best, 8)
   assert.match(JSON.stringify(updated), /Best: 8/)
   assert.equal(client.surface.state.game.phase, "ready", "the record refresh does not start or end a round")
@@ -442,13 +444,17 @@ test("Claude reopens a completed response with its persisted score and best", as
   await host.emit("turn.complete", { turnId: "a", reason: "answer" })
   const entry = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
   const client = createSurface()
-  const drawing = FlappyClient(entry.props.props, client.surface)
+  const drawing = FlappyClient(clientOf(entry).props.props, client.surface)
   assert.equal(client.surface.state.game.score, 8)
   assert.equal(client.surface.state.game.best, 12)
   assert.equal(client.surface.state.game.locked, true)
   assert.ok(JSON.stringify(drawing).includes("Score: 8"))
   assert.equal(client.timers.size, 0)
 })
+
+function clientOf(tree) {
+  return allElements(tree).find((element) => element.type === "Client")
+}
 
 function measuredRows(element) {
   if (element.type === "Text" || element.type === "Button") return 1
@@ -469,10 +475,10 @@ test("Claude native drawing stays inside the host body height, including tiny pa
       props: { isFocused: true, scroll: { bodyRows } },
     })
     const client = createSurface()
-    const drawing = FlappyClient(entry.props.props, client.surface)
+    const drawing = FlappyClient(clientOf(entry).props.props, client.surface)
     const height = measuredRows(drawing)
     assert.ok(height <= bodyRows, `${height} drawn rows exceed a ${bodyRows}-row pane`)
-    assert.ok(height <= entry.props.height)
+    assert.ok(height <= clientOf(entry).props.height)
     if (bodyRows === 29) assert.equal(height, 29)
     for (const element of allElements(drawing)) {
       assert.equal(element.props.mono, undefined)
@@ -481,16 +487,23 @@ test("Claude native drawing stays inside the host body height, including tiny pa
   }
 })
 
-test("Claude desktop fills board cells with blocks while the terminal keeps half blocks", () => {
+test("Claude desktop draws the board as a posted Svg scene while the terminal keeps half blocks", async () => {
   for (const [surface, halfBlocks] of [["desktop", false], ["terminal", true]]) {
     const client = createSurface()
     const drawing = FlappyClient({ best: 0, locale: "en", focused: true, bodyRows: 29, surface }, client.surface)
     assert.equal(JSON.stringify(drawing).includes("▀"), halfBlocks)
-    if (!halfBlocks) {
-      const cells = allElements(drawing).filter((element) => element.type === "Box" && element.props.backgroundColor)
-      assert.ok(cells.length > 0)
-    }
+    assert.equal(client.posts.every((post) => post.frame !== undefined), !halfBlocks)
   }
+  const host = createHost()
+  const frame = { phase: "playing", score: 4, scroll: 300, y: 200, angle: -0.3, wing: 2, pipes: [[420, 250]] }
+  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "playing", animating: true, best: 0, score: 4, frame } })
+  const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
+  const source = allElements(tree).find((element) => element.type === "Svg").props.source
+  assert.ok(source.includes("#bird2"))
+  assert.ok(source.includes(">4</text>"))
+  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "playing", animating: true, best: 0, score: 5, frame: { ...frame, score: 5, pipes: "bad" } } })
+  const unchanged = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
+  assert.equal(allElements(unchanged).find((element) => element.type === "Svg").props.source, source)
 })
 
 test("Claude pointer input is limited to the board and does not double-trigger pause controls", () => {

@@ -10,15 +10,8 @@ const palette = {
   beak: "#f6662b", eye: "#ffffff",
 }
 
-// Cells are about twice as tall as wide: the terminal splits each in two, Desktop's taller cells into finer flex pixels.
-const CELL_ASPECT = { terminal: 2, desktop: 2.2 }
-const DESKTOP_SUBDIVISION = 2
-
-export function drawBoard(game, columns, rows, elements, surface) {
-  if (surface === "terminal") return halfBlockLines(paint(game, columns, rows * 2), columns, rows * 2, elements)
-  const width = columns * DESKTOP_SUBDIVISION
-  const height = Math.max(1, Math.round(rows * (CELL_ASPECT[surface] ?? CELL_ASPECT.desktop) * DESKTOP_SUBDIVISION))
-  return [flexBoard(paint(game, width, height), width, height, columns, rows, elements)]
+export function drawBoard(game, columns, rows, elements) {
+  return halfBlockLines(paint(game, columns, rows * 2), columns, rows * 2, elements)
 }
 
 function paint(game, width, height) {
@@ -120,30 +113,4 @@ function halfBlockLines(pixels, width, height, { Text }) {
     lines.push(Text({ wrap: "truncate", children: spans }))
   }
   return lines
-}
-
-// Empty flex items grow from zero, so each run's share of its row is its pixel count; identical rows merge into one.
-function flexBoard(pixels, width, height, columns, rows, { Box }) {
-  const groups = []
-  let previous = ""
-  for (let y = 0; y < height; y++) {
-    const from = y * width
-    const signature = pixels.slice(from, from + width).join()
-    if (signature === previous) {
-      groups[groups.length - 1].count++
-      continue
-    }
-    previous = signature
-    groups.push({ from, count: 1 })
-  }
-  return Box({
-    flexDirection: "column", width: columns, height: rows, flexShrink: 0,
-    children: groups.map(({ from, count }) => Box({
-      flexDirection: "row", flexGrow: count,
-      children: runs(pixels, width, from, (a, b) => pixels[a] === pixels[b]).map(([start, end]) => {
-        const backgroundColor = pixels[from + start]
-        return Box(backgroundColor === null ? { flexGrow: end - start } : { flexGrow: end - start, backgroundColor })
-      }),
-    })),
-  })
 }

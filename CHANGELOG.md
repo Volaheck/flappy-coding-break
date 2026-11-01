@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.2
+
+- Draw the Claude Desktop game as a vector scene matching the Canvas version: the pane renders each frame the game posts as SVG, with the game's text and click area laid over it. The terminal keeps its half-block renderer.
+
 ## 1.3.1
 
 - Draw the Claude board with square pixels and a field width fitted to the pane, like the Canvas version; Claude Desktop uses a finer grid.
