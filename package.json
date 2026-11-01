@@ -1,0 +1,20 @@
+{
+  "name": "opencode-flappybird",
+  "version": "1.0.0",
+  "description": "Flappy Bird for OpenCode Desktop: a side panel game that opens while the agent is working",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "opencode-desktop",
+    "game",
+    "flappy-bird"
+  ],
+  "exports": {
+    "./gui-experimental": "./gui-experimental.cjs"
+  },
+  "files": [
+    "gui-experimental.cjs"
+  ]
+}
