@@ -14,65 +14,31 @@
 
 ## Установка
 
-Используй штатный менеджер плагинов своего приложения. Для команд терминала CLI выбранного приложения должен быть в `PATH`; в Codex Desktop можно установить плагин через интерфейс.
+**Людям** — в своём приложении:
 
-### OpenCode Desktop
+- **Claude Desktop:** **+** у поля ввода → **Plugins** → **Add marketplace** `Volaheck/flappy-coding-break` → **Add plugin** → команда `/reload-plugins`.
+- **Claude Code (терминал):** `claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break`, затем новая сессия.
+- **Codex Desktop:** **Plugins → Add → Add a marketplace** `Volaheck/flappy-coding-break` → **Install** у **Flappy Coding Break** → перезапуск → разрешить хуки плагина.
+- **OpenCode Desktop:** `opencode plugin add github:Volaheck/flappy-coding-break`, затем перезапуск.
 
-```sh
-opencode plugin add github:Volaheck/flappy-coding-break
-```
+Игра открывается сама, пока агент работает. Вручную — `/flappy` (Claude, OpenCode) или попроси Codex «Открой Flappy Bird».
 
-Нужен OpenCode Desktop 2.2+. После установки перезапусти Desktop или перезагрузи плагин. См. [документацию плагинов OpenCode](https://dev.opencode.ai/v2/docs/plugins#manage).
-
-Имя npm-пакета сохранено: `opencode-flappybird`. После публикации соответствующей версии команда `opencode plugin add opencode-flappybird` продолжит работать. Экспорт `./gui-experimental` по-прежнему указывает на один готовый CommonJS-файл.
-
-### Claude Code
+**Агентам** — выполни строку для приложения пользователя и подскажи, как подгрузить плагин:
 
 ```sh
 claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
+opencode plugin add github:Volaheck/flappy-coding-break
 ```
 
-Команда добавляет marketplace и устанавливает плагин за один шаг. Нужен Claude Code 2.1.292+. После установки начни новую сессию.
+Подгрузка: `/reload-plugins` в Claude, перезапуск Codex (и разрешение хуков) или OpenCode. Если CLI приложения нет в `PATH`, дай пользователю шаги выше; внутри Claude Desktop на macOS работает CLI самого приложения: `~/Library/Application Support/Claude/claude-code/<версия>/<сборка>/claude.app/Contents/MacOS/claude`.
 
-Можно установить прямо внутри Claude Code:
+**Требования и варианты**
 
-```text
-/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
-```
-
-Команда внутри сессии поддерживается с версии 2.1.275 и предлагает подтвердить marketplace и область установки. См. [документацию плагинов Claude](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command).
-
-### Codex Desktop
-
-Открой **Plugins → Add → Add a marketplace**. В поле **Source** укажи `Volaheck/flappy-coding-break`, нажми **Add marketplace**, затем **Install** у **Flappy Coding Break**.
-
-Другой вариант — терминал, если команда `codex` доступна в `PATH`:
-
-```sh
-codex plugin marketplace add Volaheck/flappy-coding-break
-codex plugin add flappy-coding-break@flappy-coding-break
-```
-
-Если терминал сообщает `command not found: codex`, CLI недоступен в `PATH`. Используй интерфейс Desktop по инструкции выше либо установи и настрой CLI перед выполнением команд.
-
-В Codex установка состоит из двух штатных шагов: один раз добавить marketplace, затем установить плагин по имени. Флаг `plugin add --marketplace` принимает имя уже добавленного marketplace, а не адрес GitHub-репозитория. См. [справочник команд Codex](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
-
-Для локального MCP-сервера нужен Node.js 20+ в `PATH`, а для игры — desktop-версия Codex с MCP Apps UI. После установки перезапусти приложение. Проверь и разреши хуки плагина через `/hooks` в CLI или настройки хуков приложения. Установка плагина сама по себе не выдаёт доверие хукам; после изменения их определений может потребоваться повторная проверка.
-
-### Дополнительно: установка в несколько приложений сразу
-
-Вспомогательный установщик на Node.js 20+ запускает те же штатные команды и перед установкой проверяет все выбранные CLI. Для `--all` все три CLI должны быть в `PATH`; отдельные приложения выбираются флагами `--opencode`, `--claude` и `--codex`.
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all
-```
-
-Плагин ставится в постоянные каталоги родных менеджеров, существующие настройки сохраняются, временная папка `npx` не нужна для дальнейшей работы. Посмотреть команды или проверить поддержку CLI без установки:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all --dry-run
-npx github:Volaheck/flappy-coding-break doctor --codex
-```
+- **Claude Code** 2.1.292+; команда `/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break` внутри сессии работает с 2.1.275. [Документация плагинов](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command)
+- **Codex** — desktop-версия с MCP Apps UI и Node.js 20+ в `PATH`. Для живого статуса агента разреши хуки плагина (`/hooks` или настройки хуков приложения). [Справочник команд](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)
+- **OpenCode Desktop** 2.2+. npm-пакет сохранил прежнее имя `opencode-flappybird`. [Документация плагинов](https://dev.opencode.ai/v2/docs/plugins#manage)
+- **Несколько приложений сразу:** `npx github:Volaheck/flappy-coding-break install --all` требует все три CLI; приложения выбираются флагами `--claude`, `--codex`, `--opencode`, `--dry-run` только показывает команды, `doctor --codex` проверяет CLI.
 
 ## Использование
 
@@ -129,7 +95,7 @@ npm run test:claude
 npm pack --dry-run
 ```
 
-Внешних npm-зависимостей для работы нет. Общая физика — `game/core.cjs`, Canvas-отрисовка — `game/canvas.cjs`, переводы — `game/i18n.cjs`. Интеграции расположены в `adapters/`.
+Внешних npm-зависимостей для работы нет, экспорт `./gui-experimental` — один готовый CommonJS-файл. Общая физика — `game/core.cjs`, Canvas-отрисовка — `game/canvas.cjs`, переводы — `game/i18n.cjs`. Интеграции расположены в `adapters/`.
 
 `test:claude` скачивает закреплённую версию официального CLI Claude Code и запускает его валидатор плагинов и родной набор тестов в отдельном временном профиле. Нужен доступ к сети; аккаунт и вызовы модели не нужны. CI также проверяет Node-тесты и сборку на Linux и Windows с Node.js 20 и 24.
 

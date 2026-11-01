@@ -14,65 +14,31 @@ The game never opens an external browser or window. The Codex CLI and Claude Cod
 
 ## Install
 
-Use your app's native plugin manager. Terminal commands require that app's CLI on `PATH`; Codex Desktop also supports installation through its interface.
+**People** — in your app:
 
-### OpenCode Desktop
+- **Claude Desktop:** **+** next to the message box → **Plugins** → **Add marketplace** `Volaheck/flappy-coding-break` → **Add plugin** → run `/reload-plugins`.
+- **Claude Code (terminal):** `claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break`, then start a new session.
+- **Codex Desktop:** **Plugins → Add → Add a marketplace** `Volaheck/flappy-coding-break` → **Install** on **Flappy Coding Break** → restart → trust the plugin's hooks.
+- **OpenCode Desktop:** `opencode plugin add github:Volaheck/flappy-coding-break`, then restart.
 
-```sh
-opencode plugin add github:Volaheck/flappy-coding-break
-```
+The game opens by itself while the agent works. Open it any time with `/flappy` (Claude, OpenCode) or by asking Codex to “Open Flappy Bird”.
 
-Requires OpenCode Desktop 2.2+. Restart Desktop or reload the plugin after installation. See the [OpenCode plugin documentation](https://dev.opencode.ai/v2/docs/plugins#manage).
-
-The npm package retains its original name, `opencode-flappybird`, for compatibility. After the corresponding version is published, `opencode plugin add opencode-flappybird` remains supported. The exported `./gui-experimental` entrypoint remains a single self-contained CommonJS bundle.
-
-### Claude Code
+**Agents** — run the line for the user's app, then tell them how to load it:
 
 ```sh
 claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+codex plugin marketplace add Volaheck/flappy-coding-break && codex plugin add flappy-coding-break@flappy-coding-break
+opencode plugin add github:Volaheck/flappy-coding-break
 ```
 
-This command adds the marketplace and installs the plugin in one step. Requires Claude Code 2.1.292+. Start a new session after installation.
+Loading: `/reload-plugins` in Claude, a restart in Codex (plus hook trust) or OpenCode. If the app's CLI is not on `PATH`, give the user the steps above; inside Claude Desktop on macOS the app's own CLI works: `~/Library/Application Support/Claude/claude-code/<version>/<build>/claude.app/Contents/MacOS/claude`.
 
-You can also install from inside Claude Code:
+**Requirements and options**
 
-```text
-/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
-```
-
-The in-session command is supported from 2.1.275 and asks you to confirm the marketplace and installation scope. See the [Claude plugin documentation](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command).
-
-### Codex Desktop
-
-Open **Plugins → Add → Add a marketplace**. Set **Source** to `Volaheck/flappy-coding-break`, choose **Add marketplace**, then **Install** on **Flappy Coding Break**.
-
-Alternatively, if the `codex` CLI is available on `PATH`, run:
-
-```sh
-codex plugin marketplace add Volaheck/flappy-coding-break
-codex plugin add flappy-coding-break@flappy-coding-break
-```
-
-If your shell reports `command not found: codex`, the CLI is not available on `PATH`. Use the Desktop steps above or install/configure the CLI before running these commands.
-
-Codex requires two native steps: register the marketplace once, then install the plugin by name. Its `plugin add --marketplace` flag takes a registered marketplace name, not a GitHub repository. See the [Codex command reference](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
-
-Requires Node.js 20+ on `PATH` for the local MCP server and a Codex desktop version with MCP Apps UI. Restart the app after installation. Review and trust this plugin's hooks using `/hooks` in the CLI or the app's hook controls. Installing a plugin does not grant hook trust; changed hook definitions can require another review.
-
-### Optional: install in several apps together
-
-The Node.js 20+ helper runs these same native commands and checks all selected CLIs before installing anything. `--all` requires all three CLIs on `PATH`; you can select individual apps with `--opencode`, `--claude`, or `--codex`.
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all
-```
-
-It installs into the native managers' persistent caches, preserves existing configuration, and does not depend on the temporary `npx` directory. To preview the commands or check CLI support without installing:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all --dry-run
-npx github:Volaheck/flappy-coding-break doctor --codex
-```
+- **Claude Code** 2.1.292+; the in-session `/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break` works from 2.1.275. [Plugin docs](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command)
+- **Codex** desktop with MCP Apps UI and Node.js 20+ on `PATH`. Live agent status needs the plugin's hooks trusted (`/hooks` or the app's hook controls). [Command reference](https://learn.chatgpt.com/docs/developer-commands#codex-plugin)
+- **OpenCode Desktop** 2.2+. The npm package keeps its original name, `opencode-flappybird`. [Plugin docs](https://dev.opencode.ai/v2/docs/plugins#manage)
+- **Several apps at once:** `npx github:Volaheck/flappy-coding-break install --all` needs all three CLIs; pick apps with `--claude`, `--codex` or `--opencode`, preview with `--dry-run`, check a CLI with `doctor --codex`.
 
 ## Play
 
@@ -129,7 +95,7 @@ npm run test:claude
 npm pack --dry-run
 ```
 
-There are no runtime npm dependencies. The shared physics lives in `game/core.cjs`, the Canvas renderer in `game/canvas.cjs`, and translations in `game/i18n.cjs`. Host-specific code lives in `adapters/`.
+There are no runtime npm dependencies, and the exported `./gui-experimental` entrypoint is a single self-contained CommonJS bundle. The shared physics lives in `game/core.cjs`, the Canvas renderer in `game/canvas.cjs`, and translations in `game/i18n.cjs`. Host-specific code lives in `adapters/`.
 
 `test:claude` downloads a pinned official Claude Code CLI and runs its plugin validator and native test kit in an isolated temporary profile. It requires network access but no account or model calls. CI also runs the Node tests and build checks on Linux and Windows with Node.js 20 and 24.
 
