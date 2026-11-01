@@ -227,7 +227,7 @@ export function drawHud(game, view, rows, status, t, { Box, Text }) {
     }))
     place(100, Box({ flexDirection: "column", alignItems: "center", rowGap: 1, children: card }), 1)
   }
-  if (status === "running" || status === "done") {
+  if (UI.status[status]) {
     const dark = sceneDim(game) > 0
     place(GROUND_Y + 64, pill([
       Text({ color: UI.status[status], children: ["● "] }),

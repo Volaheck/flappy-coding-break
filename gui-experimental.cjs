@@ -302,7 +302,7 @@ const THEME = {
     // The same veils as a part of black, for surfaces that darken the scene's colours instead.
     veil: { result: 0.8, paused: 0.45 },
     record: "#ff9c10", recordBg: "rgba(255, 156, 16, 0.12)", recordBgSolid: "#3a2a12",
-    status: { running: "#ff9c10", done: "#31d158" },
+    status: { running: "#ff9c10", done: "#31d158", idle: "#8e8e93" },
     statusText: "rgba(0, 0, 0, 0.8)", statusTextSolid: "#333336",
     statusBg: "rgba(0, 0, 0, 0.06)", statusBgSolid: "#e4e4e9",
   },
@@ -1096,6 +1096,7 @@ const messages = {
       resume: "Click or Space to continue",
       "status.running": "Agent is working…",
       "status.done": "Agent is done",
+      "status.idle": "Waiting for the agent",
       "phrases.zero": [
         "Even the best ducks start at zero. Give it another try!",
         "Quack it up! Zero today, hero tomorrow!",
@@ -1138,6 +1139,7 @@ const messages = {
       resume: "Клик или пробел — продолжить",
       "status.running": "Агент работает…",
       "status.done": "Агент закончил",
+      "status.idle": "Ждём агента",
       "phrases.zero": [
         "Даже лучшие утки начинали с нуля. Попробуй ещё раз!",
         "Кря! Сегодня ноль — завтра рекорд!",

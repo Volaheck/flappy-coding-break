@@ -5,7 +5,11 @@ import { boardAspect, desktopBoardRows, fieldLayout } from "./field.js"
 import { drawHud, drawScene } from "./scene.js"
 
 const FRAME_MS = 1000 / 30
-const flapKeys = new Set([" ", "w", "W", "up", "return", "enter"])
+// Keys that flap, by any name a surface gives them: the character typed or a special key's name.
+const FLAP_KEYS = new Set([" ", "space", "spacebar", "w", "up", "arrowup", "return", "enter"])
+// Every status but "running" settles the round: the agent has finished, or none has started since the
+// game loaded, so a round can only begin while the agent works.
+const SETTLED = new Set(["running", "done", "idle"])
 
 function createRuntime(props, surface) {
   const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined, status: props.status, columns: undefined }
@@ -40,7 +44,7 @@ function createRuntime(props, surface) {
     })
   }
   runtime.game = createGame(() => {}, { best: props.best ?? 0, lastScore: props.lastScore ?? 0 })
-  if (props.status === "done" || props.status === "running") runtime.game.setRunning(props.status === "running")
+  if (SETTLED.has(props.status)) runtime.game.setRunning(props.status === "running")
   runtime.press = () => {
     runtime.game.press()
     wake()
@@ -55,8 +59,9 @@ function createRuntime(props, surface) {
   }
   surface.onKey((event) => {
     if (event.ctrl || event.meta) return
-    if (flapKeys.has(event.key)) runtime.press()
-    else if (event.key.toLowerCase() === "p") runtime.pause()
+    const key = String(event.key).toLowerCase()
+    if (FLAP_KEYS.has(key)) runtime.press()
+    else if (key === "p") runtime.pause()
   })
   surface.onPointer((event) => {
     if (event.type !== "down" || (event.button && event.button !== "left")) return
@@ -74,7 +79,7 @@ function createRuntime(props, surface) {
 export default function FlappyClient(props, surface) {
   const runtime = surface.state ?? createRuntime(props, surface)
   runtime.props = props
-  if (runtime.status !== props.status && (props.status === "running" || props.status === "done")) {
+  if (runtime.status !== props.status && SETTLED.has(props.status)) {
     runtime.game.setRunning(props.status === "running")
     runtime.status = props.status
     runtime.wake()
@@ -94,14 +99,14 @@ export default function FlappyClient(props, surface) {
   const columns = Math.max(1, desktop ? surface.columns || 40 : Math.min(48, surface.columns || 40))
   const bodyRows = Math.max(0, Math.min(31, Math.floor(props.bodyRows ?? 29)))
   const status = props.status ? t(`status.${props.status}`) : t("title")
-  const help = game.phase === "finished" ? t(game.locked ? "waiting" : "restart") : props.locale === "ru" ? "Клик / W — взмах · P — пауза" : "Click / W — flap · P — pause"
+  const help = game.phase === "finished" ? t(game.locked ? "waiting" : "restart") : props.locale === "ru" ? "Клик, пробел или W — взмах · P — пауза" : "Click, Space or W — flap · P — pause"
   const message = game.phase === "finished" ? `${t("finished")} · ${t("score")}: ${game.score}` : game.phase === "paused" ? t("paused") : game.phase === "over" ? t("over") : game.phase === "ready" ? t("start") : `${t("score")}: ${game.score}`
   const buttons = [
     Button({ key: "flap", label: "W", plain: true, onPress: runtime.press }),
     Button({ key: "pause", label: "P", plain: true, onPress: runtime.pause }),
   ]
   const chrome = [
-    Text({ wrap: "truncate", color: props.status === "running" ? "#ffd166" : "#7ee787", children: [status] }),
+    Text({ wrap: "truncate", color: props.status === "running" ? "#ffd166" : props.status === "idle" ? "#8e8e93" : "#7ee787", children: [status] }),
     Text({ wrap: "truncate", children: [`${message}  ·  ${t("best")}: ${game.best}`] }),
     Text({ wrap: "truncate", dimColor: true, children: [help] }),
     game.locked ? Text({ children: [" "] }) : Box({ flexDirection: "row", columnGap: 1, children: buttons }),

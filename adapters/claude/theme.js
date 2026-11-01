@@ -44,7 +44,8 @@ export const THEME = {
     "recordBgSolid": "#3a2a12",
     "status": {
       "running": "#ff9c10",
-      "done": "#31d158"
+      "done": "#31d158",
+      "idle": "#8e8e93"
     },
     "statusText": "rgba(0, 0, 0, 0.8)",
     "statusTextSolid": "#333336",

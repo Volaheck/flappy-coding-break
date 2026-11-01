@@ -17,6 +17,7 @@ export const messages = {
     "resume": "Click or Space to continue",
     "status.running": "Agent is working…",
     "status.done": "Agent is done",
+    "status.idle": "Waiting for the agent",
     "phrases.zero": [
       "Even the best ducks start at zero. Give it another try!",
       "Quack it up! Zero today, hero tomorrow!",
@@ -59,6 +60,7 @@ export const messages = {
     "resume": "Клик или пробел — продолжить",
     "status.running": "Агент работает…",
     "status.done": "Агент закончил",
+    "status.idle": "Ждём агента",
     "phrases.zero": [
       "Даже лучшие утки начинали с нуля. Попробуй ещё раз!",
       "Кря! Сегодня ноль — завтра рекорд!",

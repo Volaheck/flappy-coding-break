@@ -266,6 +266,8 @@ test("the newest Claude pane refreshes the record saved when an older live game 
   await older.emit("command.run", { command: "flappy" })
   await older.state("playing", true, 0, 0, 8)
   await newer.emit("command.run", { command: "flappy" })
+  await newer.emit("turn.start", { turnId: "work" })
+  newer.invalidations.length = 0
   const render = () => newer.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
   const client = createSurface()
   FlappyClient(clientOf(await render()).props.props, client.surface)
@@ -490,6 +492,41 @@ test("Claude desktop shows the Flappy Duck heads-up display for every phase and 
   props.status = "done"
   texts = textsOf(draw())
   for (const expected of ["Round complete", "Play again when the agent starts working", "Agent is done"]) assert.ok(texts.includes(expected), expected)
+})
+
+test("Claude locks the round whenever no agent turn is running, even after the plugin reloads", async () => {
+  const host = createHost()
+  await host.emit("session.start", { surface: "desktop", isInteractive: true })
+  const render = async () => clientOf(await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })).props.props
+  const idle = await render()
+  assert.equal(idle.status, "idle")
+  const client = createSurface()
+  let texts = textsOf(FlappyClient({ ...idle, surface: "desktop" }, client.surface))
+  assert.equal(client.surface.state.game.locked, true)
+  for (const expected of ["Waiting for the agent", "Play again when the agent starts working"]) assert.ok(texts.includes(expected), expected)
+  client.key("space")
+  assert.equal(client.surface.state.game.phase, "finished")
+  await host.emit("turn.start", { turnId: "work" })
+  const running = await render()
+  FlappyClient({ ...running, surface: "desktop" }, client.surface)
+  client.key("space")
+  assert.equal(client.surface.state.game.phase, "playing")
+  await host.emit("turn.complete", { turnId: "work", reason: "answer" })
+  texts = textsOf(FlappyClient({ ...(await render()), surface: "desktop" }, client.surface))
+  assert.ok(texts.includes("Agent is done") && texts.includes("Round complete"))
+})
+
+test("Claude flaps on Space, the up arrow and W under every name a surface gives them", () => {
+  for (const key of [" ", "space", "Space", "spacebar", "up", "ArrowUp", "w", "W", "return", "Enter"]) {
+    const client = createSurface()
+    FlappyClient({ best: 0, locale: "en", focused: true, status: "running", bodyRows: 29, surface: "desktop" }, client.surface)
+    const game = client.surface.state.game
+    client.key(key)
+    assert.equal(game.phase, "playing", key)
+    const before = game.bird.vy
+    client.key(key)
+    assert.ok(game.bird.vy < 0 && game.bird.vy <= before, key)
+  }
 })
 
 test("Claude desktop board layers are placed by explicit cells and leave the controls row in the flow", () => {

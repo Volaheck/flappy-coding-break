@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.5.2
+
+- Claude: play only while the agent works. With no turn running (before the first one, after an answer, or after the plugin reloads or the app restarts) the round stays locked with "Play again when the agent starts working", and the status reads "Waiting for the agent" until a turn starts.
+- Claude: flap on Space and the up arrow under every name a surface reports them by (` `, `space`, `spacebar`, `up`, `arrowup`), not only on a click or W; the controls line names Space.
+
 ## 1.5.1
 
 - Animate the duck in code instead of the sprite sheet: one still frame, cleaned of its baked speed lines and centred on the collider, so it no longer jerks between frames or drifts inside its hitbox.

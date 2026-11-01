@@ -200,7 +200,7 @@ export function register(on, options = {}) {
         best: state.best,
         lastScore: state.lastScore ?? null,
         locale: options.locale ?? "en",
-        status: state.activeTurn ? "running" : finished ? "done" : "",
+        status: state.activeTurn ? "running" : finished ? "done" : "idle",
         focused: e.props.isFocused,
         bodyRows,
         surface: e.surface,
