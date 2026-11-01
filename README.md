@@ -76,18 +76,22 @@ npx github:Volaheck/flappy-coding-break doctor --codex
 
 ## Play
 
+When the agent finishes its response, the current round ends immediately, including if it is paused. The final score is saved and counted toward your best score even if the bird has not crashed. The panel stays open with both results. Starting or resuming play is blocked until the agent starts working again; the next click or flap key starts a new round.
+
+The previous `autoClose` setting is no longer used. Close the results panel manually whenever you want.
+
 ### OpenCode
 
-Type `/flappy`, choose **Play Flappy Bird** in the command palette, or select **Flappy Bird** from the side-panel `+` menu. The panel opens after the agent has worked for about a second. Automatically opened panels close after the agent finishes and you are no longer playing; manually opened panels stay open.
+Type `/flappy`, choose **Play Flappy Bird** in the command palette, or select **Flappy Bird** from the side-panel `+` menu. The panel opens after the agent has worked for about a second. Each chat keeps its own game and results.
 
-Existing options still work in the global OpenCode config:
+Configure automatic opening in the global OpenCode config:
 
 ```jsonc
 {
   "plugins": [
     {
       "package": "github:Volaheck/flappy-coding-break",
-      "options": { "autoOpen": true, "autoClose": true }
+      "options": { "autoOpen": true }
     }
   ]
 }
@@ -95,9 +99,9 @@ Existing options still work in the global OpenCode config:
 
 ### Claude Code
 
-Run `/flappy` to toggle the native pane, including while Claude is working. The mod opens automatically on a main-agent turn and closes after the round finishes. Paused games are preserved. Subagent completions do not close the game.
+Run `/flappy` to toggle the native pane, including while Claude is working. The mod opens automatically on a main-agent turn. Main-agent completion ends the round and shows the saved score and best; subagent completions do not end it.
 
-The renderer uses the Mods Client API and does not require a browser. It draws pixel graphics with the same physics as the Canvas version. Configure `autoOpen`, `autoClose`, and `locale` (`en` / `ru`) through the plugin's configuration.
+The renderer uses the Mods Client API and does not require a browser. It draws pixel graphics with the same physics as the Canvas version. Configure `autoOpen` and `locale` (`en` / `ru`) through the plugin's configuration.
 
 Terminal pane auto-opening depends on the terminal width: normally at least 144 columns, or 110 after manually opening a pane. Use `/flappy` to open it in a smaller terminal. Arrow keys belong to the host; use W, Space, or the pointer. The VS Code extension does not support the Client element used by this game.
 
@@ -107,7 +111,7 @@ Ask **“Open Flappy Bird”**, invoke the `flappy` skill, or use the **Flappy B
 
 Trusted lifecycle hooks request the initial opening once per chat. This initial opening is a model tool call; subsequent gameplay and status polling do not call the model. The game reads only the current chat's status through an app-only MCP tool. It makes no external network requests.
 
-An automatically opened game asks the host to close it after the response ends and the current round has finished; paused rounds are kept. Manual openings stay open. Hosts without the close capability keep the panel open. Automatic opening is requested once per chat; after closing, reopen it with the skill or side-panel picker. Status labels distinguish an active response, a ready response, interruption, and a closed session. “Response ready” does not guarantee that the entire task is complete: another hook can continue the turn.
+Response completion, interruption, and session end all finish the round and lock play while keeping the results visible. A new active response unlocks the next round. Losing the status connection does not unlock a finished game. Automatic opening is requested once per chat; after manually closing, reopen it with the skill or side-panel picker. “Response ready” does not guarantee that the entire task is complete: another hook can continue the turn.
 
 Hooks require supported local Codex execution. Without trusted hooks, the game is still playable but cannot show live agent status. This integration requires a desktop version with MCP Apps UI; installing it in the CLI alone does not add a graphical pane.
 

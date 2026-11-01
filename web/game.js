@@ -49,17 +49,19 @@ function hitRect(cx, cy, radius, x, y, width, height) {
   return dx * dx + dy * dy < radius * radius
 }
 
-function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = Math.random } = {}) {
+function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () => {}, saveScore = () => {}, random = Math.random } = {}) {
   const bird = { y: READY_Y, prevY: READY_Y, vy: 0, angle: 0, prevAngle: 0, wing: 0 }
   const pipes = []
   const game = {
     phase: "ready",
+    locked: false,
     time: 0,
     scroll: 0,
     prevScroll: 0,
     nextPipe: 0,
     lastGap: GROUND_Y / 2,
     score: 0,
+    lastScore: Number.isSafeInteger(lastScore) && lastScore >= 0 ? lastScore : 0,
     best: Number.isFinite(best) && best > 0 ? Math.floor(best) : 0,
     record: false,
     deadAt: 0,
@@ -72,6 +74,7 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
     pause,
     toggle,
     animating,
+    setRunning,
   }
 
   function flap() {
@@ -92,20 +95,48 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
     bird.y = bird.prevY = READY_Y + Math.sin(game.time * 7) * 5
   }
 
-  function die() {
-    game.phase = "over"
-    game.deadAt = game.time
-    game.flash = 1
-    if (bird.vy < 0) bird.vy = 0
+  function saveResult() {
+    if (game.lastScore !== game.score) {
+      game.lastScore = game.score
+      saveScore(game.score)
+    }
     if (game.score > game.best) {
       game.best = game.score
       game.record = true
       saveBest(game.best)
     }
+  }
+
+  function die() {
+    game.phase = "over"
+    game.deadAt = game.time
+    game.flash = 1
+    if (bird.vy < 0) bird.vy = 0
+    saveResult()
+    onEnd()
+  }
+
+  function setRunning(running) {
+    if (running) {
+      game.locked = false
+      return
+    }
+    if (game.locked) return
+    game.locked = true
+    if (game.phase === "ready") game.score = game.lastScore
+    game.phase = "finished"
+    game.flash = 0
+    bird.vy = 0
+    bird.prevY = bird.y
+    bird.prevAngle = bird.angle
+    game.prevScroll = game.scroll
+    saveResult()
     onEnd()
   }
 
   function press() {
+    if (game.locked) return
+    if (game.phase === "finished") reset()
     if (game.phase === "ready") {
       game.phase = "playing"
       game.nextPipe = game.scroll + MAX_W + 24
@@ -183,6 +214,7 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
   }
 
   function step(dt) {
+    if (game.phase === "finished") return
     game.time += dt
     game.prevScroll = game.scroll
     bird.prevY = bird.y
@@ -244,6 +276,7 @@ const { createGame } = require("./core.cjs")
 const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, BIRD_W, BIRD_H, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = require("./constants.cjs")
 
 const BEST_KEY = "opencode.flappybird.best"
+const SCORE_KEY = "flappy-coding-break.lastScore"
 const ENGAGED_FOR = 3000
 
 
@@ -328,7 +361,22 @@ function readBest() {
 
 function writeBest(value) {
   try {
-    localStorage.setItem(BEST_KEY, String(value))
+    localStorage.setItem(BEST_KEY, String(Math.max(value, readBest())))
+  } catch {}
+}
+
+function readScore() {
+  try {
+    const value = Number(localStorage.getItem(SCORE_KEY))
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeScore(value) {
+  try {
+    localStorage.setItem(SCORE_KEY, String(value))
   } catch {}
 }
 
@@ -884,11 +932,12 @@ function createView(game, t, status, wake, touch) {
       return
     }
 
-    if (phase !== "over") return
+    if (phase !== "over" && phase !== "finished") return
+    const finished = phase === "finished"
     const elapsed = game.time - game.deadAt
-    const title = ease((elapsed - 0.25) / 0.3)
-    if (title > 0) stamp(text("over", t("over"), 28, TEXT.over), center, 104 - (1 - title) * 14, title)
-    const board = ease((elapsed - 0.4) / 0.35)
+    const title = finished ? 1 : ease((elapsed - 0.25) / 0.3)
+    if (title > 0) stamp(text("over", t(finished ? "finished" : "over"), finished ? 23 : 28, TEXT.over), center, 104 - (1 - title) * 14, title)
+    const board = finished ? 1 : ease((elapsed - 0.4) / 0.35)
     if (board > 0) {
       const labels = { score: t("score"), best: t("best"), medal: t("medal"), record: t("record") }
       const value = [game.score, game.best, game.record, labels.score, labels.best, labels.medal, labels.record].join("|")
@@ -899,8 +948,8 @@ function createView(game, t, status, wake, touch) {
         board,
       )
     }
-    const hint = ease((elapsed - RESTART_DELAY) / 0.25)
-    if (hint > 0) stamp(text("restart", t("restart"), 14, TEXT.hint), center, 284, hint)
+    const hint = finished ? 1 : ease((elapsed - RESTART_DELAY) / 0.25)
+    if (hint > 0) stamp(text("restart", t(game.locked ? "waiting" : "restart"), game.locked ? 10 : 14, TEXT.hint), center, 284, hint)
   }
 
   function draw(alpha) {
@@ -991,8 +1040,9 @@ function createEngine(t, options = {}) {
   const game = createGame(() => {
     wake()
     options.onStateChange?.(game.phase)
-  }, { best: readBest(), saveBest: writeBest, ...options })
+  }, { best: readBest(), lastScore: readScore(), saveBest: writeBest, saveScore: writeScore, ...options })
   const touch = () => {
+    if (options.best === undefined) game.best = Math.max(game.best, readBest())
     touched = performance.now()
   }
 
@@ -1053,6 +1103,7 @@ function createEngine(t, options = {}) {
 
   return {
     mount(status) {
+      if (options.best === undefined) game.best = Math.max(game.best, readBest())
       const view = createView(game, t, status, wake, touch)
       views.push(view)
       wake()
@@ -1071,6 +1122,11 @@ function createEngine(t, options = {}) {
       view?.root.focus({ preventScroll: true })
     },
     phase: () => game.phase,
+    setRunning(running) {
+      if (options.best === undefined) game.best = Math.max(game.best, readBest())
+      game.setRunning(running)
+      wake()
+    },
     engaged: () =>
       game.phase === "playing" || (game.phase !== "paused" && performance.now() - touched < ENGAGED_FOR),
     wake,
@@ -1101,6 +1157,8 @@ const messages = {
       medal: "Medal",
       record: "NEW",
       over: "Game Over",
+      finished: "Round complete",
+      waiting: "Play again when the agent starts working",
       restart: "Click or Space to play again",
       paused: "Paused",
       resume: "Click or Space to continue",
@@ -1117,6 +1175,8 @@ const messages = {
       medal: "Медаль",
       record: "НОВЫЙ",
       over: "Игра окончена",
+      finished: "Партия завершена",
+      waiting: "Новая игра — когда агент начнёт работу",
       restart: "Клик или пробел — ещё раз",
       paused: "Пауза",
       resume: "Клик или пробел — продолжить",

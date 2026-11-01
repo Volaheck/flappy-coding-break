@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+
+- End the current round as soon as the agent finishes its response, including live and paused rounds.
+- Save the final score and update the best score without requiring a collision.
+- Keep the score and best-score screen visible; block play until the agent starts working again.
+- Remove automatic panel closing; existing `autoClose` settings no longer close the results.
+- Isolate OpenCode game instances by chat and persist the last completed result.
+
 ## 1.1.0
 
 - Shared game physics, Canvas rendering, and English/Russian translations.

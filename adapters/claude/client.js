@@ -6,10 +6,10 @@ const FRAME_MS = 1000 / 30
 const flapKeys = new Set([" ", "w", "W", "up", "return", "enter"])
 
 function createRuntime(props, surface) {
-  const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined }
+  const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined, status: props.status }
   const publish = () => {
     const game = runtime.game
-    const data = { type: "state", phase: game.phase, animating: game.animating(), best: game.best }
+    const data = { type: "state", phase: game.phase, animating: game.animating(), best: game.best, lastScore: game.lastScore }
     const signature = JSON.stringify(data)
     if (signature !== runtime.lastState) {
       runtime.lastState = signature
@@ -20,7 +20,12 @@ function createRuntime(props, surface) {
   const wake = () => {
     publish()
     redraw()
-    if (!runtime.game.animating() || runtime.stop) return
+    if (!runtime.game.animating()) {
+      runtime.stop?.()
+      runtime.stop = undefined
+      return
+    }
+    if (runtime.stop) return
     runtime.stop = surface.every(FRAME_MS, () => {
       for (let index = 0; index < 4; index++) runtime.game.step(constants.STEP)
       publish()
@@ -31,7 +36,8 @@ function createRuntime(props, surface) {
       }
     })
   }
-  runtime.game = createGame(() => {}, { best: props.best ?? 0 })
+  runtime.game = createGame(() => {}, { best: props.best ?? 0, lastScore: props.lastScore ?? 0 })
+  if (props.status === "done" || props.status === "running") runtime.game.setRunning(props.status === "running")
   runtime.press = () => {
     runtime.game.press()
     wake()
@@ -64,6 +70,11 @@ function createRuntime(props, surface) {
 export default function FlappyClient(props, surface) {
   const runtime = surface.state ?? createRuntime(props, surface)
   runtime.props = props
+  if (runtime.status !== props.status && (props.status === "running" || props.status === "done")) {
+    runtime.game.setRunning(props.status === "running")
+    runtime.status = props.status
+    runtime.wake()
+  }
   if (runtime.focused && !props.focused && runtime.game.phase === "playing") {
     runtime.game.pause()
     runtime.stop?.()
@@ -80,13 +91,13 @@ export default function FlappyClient(props, surface) {
   const rows = Math.max(0, bodyRows - 4)
   runtime.board = { columns, top: 1, bottom: 1 + rows }
   const status = props.status ? t(`status.${props.status}`) : t("title")
-  const help = props.locale === "ru" ? "Клик / W — взмах · P — пауза" : "Click / W — flap · P — pause"
-  const message = game.phase === "paused" ? t("paused") : game.phase === "over" ? t("over") : game.phase === "ready" ? t("start") : `${t("score")}: ${game.score}`
+  const help = game.phase === "finished" ? t(game.locked ? "waiting" : "restart") : props.locale === "ru" ? "Клик / W — взмах · P — пауза" : "Click / W — flap · P — pause"
+  const message = game.phase === "finished" ? `${t("finished")} · ${t("score")}: ${game.score}` : game.phase === "paused" ? t("paused") : game.phase === "over" ? t("over") : game.phase === "ready" ? t("start") : `${t("score")}: ${game.score}`
   const chrome = [
     Text({ wrap: "truncate", color: props.status === "running" ? "#ffd166" : "#7ee787", children: [status] }),
     Text({ wrap: "truncate", children: [`${message}  ·  ${t("best")}: ${game.best}`] }),
     Text({ wrap: "truncate", dimColor: true, children: [help] }),
-    Box({ flexDirection: "row", columnGap: 1, children: [
+    game.locked ? Text({ children: [" "] }) : Box({ flexDirection: "row", columnGap: 1, children: [
       Button({ key: "flap", label: "W", plain: true, onPress: runtime.press }),
       Button({ key: "pause", label: "P", plain: true, onPress: runtime.pause }),
     ] }),

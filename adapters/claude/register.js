@@ -3,9 +3,9 @@ import { translate } from "./i18n.js"
 const PANE = "flappy-coding-break"
 const CLIENT = "flappy-game"
 const BEST = "flappy.best"
+const LAST_SCORE = "flappy.lastScore"
 const OPEN_DELAY = 1000
-const CLOSE_DELAY = 1500
-const phases = new Set(["ready", "playing", "paused", "over"])
+const phases = new Set(["ready", "playing", "paused", "over", "finished"])
 
 function report($, error) {
   $.ui.log(`Flappy Bird: ${String(error)}`, { to: "debug" })
@@ -15,51 +15,26 @@ async function supported($) {
   return (await $.session.surfaces()).some((surface) => surface === "terminal" || surface === "desktop")
 }
 
-function engaged(state) {
-  return state.phase === "playing" || state.phase === "paused" || (state.phase === "over" && state.animating)
-}
-
-function scheduleClose($, state, options) {
-  if (state.activeTurn || !state.autoOpened || options.autoClose === false) return
-  state.pendingClose = true
-  if (engaged(state) || state.closeTimer) return
-  const scheduled = state.generation
-  state.closeTimer = $.clock.after(CLOSE_DELAY, () => {
-    state.closeTimer = undefined
-    if (scheduled !== state.generation || state.activeTurn || !state.autoOpened || engaged(state)) return
-    state.pendingClose = false
-    void $.ui.close({ id: PANE }).catch((error) => report($, error))
-  })
-}
-
 export function register(on, options = {}) {
   const t = translate(options.locale)
   const state = {
     activeTurn: undefined,
-    autoOpened: false,
-    pendingClose: false,
-    phase: "ready",
-    animating: false,
     openTimer: undefined,
-    closeTimer: undefined,
     generation: 0,
   }
   let best = 0
+  let lastScore
   let finished = false
 
   const cancelOpen = () => {
     state.openTimer?.cancel()
     state.openTimer = undefined
   }
-  const cancelClose = () => {
-    state.closeTimer?.cancel()
-    state.closeTimer = undefined
-    state.pendingClose = false
-  }
-
   on("session.start", async ($, e, next) => {
     const saved = await $.store.get(BEST)
     if (Number.isSafeInteger(saved) && saved >= 0) best = saved
+    const score = await $.store.get(LAST_SCORE)
+    if (Number.isSafeInteger(score) && score >= 0) lastScore = score
     await $.command.register({ name: "flappy", description: t("command.toggle"), immediate: true })
     return next(e)
   })
@@ -70,7 +45,6 @@ export function register(on, options = {}) {
     state.activeTurn = e.turnId
     finished = false
     cancelOpen()
-    cancelClose()
     $.ui.invalidate("ui.render")
     if (options.autoOpen !== false) {
       const scheduled = state.generation
@@ -80,13 +54,7 @@ export function register(on, options = {}) {
           if (scheduled !== state.generation || state.activeTurn !== e.turnId || !(await supported($))) return
           const panes = await $.ui.panes()
           if (scheduled !== state.generation || state.activeTurn !== e.turnId || panes.some((pane) => pane.id === PANE)) return
-          state.autoOpened = true
-          try {
-            await $.ui.open({ id: PANE, title: t("title"), rows: 29, columns: 44 })
-          } catch (error) {
-            state.autoOpened = false
-            throw error
-          }
+          await $.ui.open({ id: PANE, title: t("title"), rows: 29, columns: 44 })
         })().catch((error) => report($, error))
       })
     }
@@ -100,15 +68,12 @@ export function register(on, options = {}) {
     state.generation++
     cancelOpen()
     $.ui.invalidate("ui.render")
-    scheduleClose($, state, options)
     return next(e)
   })
 
   on("command.run", { command: "flappy" }, async ($) => {
     state.generation++
     cancelOpen()
-    cancelClose()
-    state.autoOpened = false
     if (!(await supported($))) {
       return { text: options.locale === "ru" ? "Flappy Bird работает в терминале Claude Code и вкладке Code приложения Claude Desktop." : "Flappy Bird supports the Claude Code terminal and the Code tab of Claude Desktop." }
     }
@@ -135,6 +100,7 @@ export function register(on, options = {}) {
       height: bodyRows,
       props: {
         best,
+        lastScore: lastScore ?? null,
         locale: options.locale ?? "en",
         status: state.activeTurn ? "running" : finished ? "done" : "",
         focused: e.props.isFocused,
@@ -147,13 +113,14 @@ export function register(on, options = {}) {
     if (e.requestId !== PANE || e.element !== CLIENT || e.data?.type !== "state") return next(e)
     const data = e.data
     if (!phases.has(data.phase) || typeof data.animating !== "boolean" || !Number.isSafeInteger(data.best) || data.best < 0) return next(e)
-    state.phase = data.phase
-    state.animating = data.animating
     if (data.best > best) {
       best = data.best
       await $.store.set(BEST, best)
     }
-    if (state.pendingClose && !engaged(state)) scheduleClose($, state, options)
+    if ((data.phase === "over" || data.phase === "finished") && Number.isSafeInteger(data.lastScore) && data.lastScore >= 0 && data.lastScore !== lastScore) {
+      lastScore = data.lastScore
+      await $.store.set(LAST_SCORE, lastScore)
+    }
     return next(e)
   })
 
@@ -161,10 +128,6 @@ export function register(on, options = {}) {
     if (e.id !== PANE) return next(e)
     state.generation++
     cancelOpen()
-    cancelClose()
-    state.autoOpened = false
-    state.phase = "ready"
-    state.animating = false
     return next(e)
   })
 
@@ -173,8 +136,6 @@ export function register(on, options = {}) {
     state.activeTurn = undefined
     finished = false
     cancelOpen()
-    cancelClose()
-    state.autoOpened = false
     await $.ui.close({ id: PANE })
     return next(e)
   })

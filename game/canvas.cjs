@@ -4,6 +4,7 @@ const { createGame } = require("./core.cjs")
 const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, BIRD_W, BIRD_H, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = require("./constants.cjs")
 
 const BEST_KEY = "opencode.flappybird.best"
+const SCORE_KEY = "flappy-coding-break.lastScore"
 const ENGAGED_FOR = 3000
 
 
@@ -88,7 +89,22 @@ function readBest() {
 
 function writeBest(value) {
   try {
-    localStorage.setItem(BEST_KEY, String(value))
+    localStorage.setItem(BEST_KEY, String(Math.max(value, readBest())))
+  } catch {}
+}
+
+function readScore() {
+  try {
+    const value = Number(localStorage.getItem(SCORE_KEY))
+    return Number.isSafeInteger(value) && value >= 0 ? value : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeScore(value) {
+  try {
+    localStorage.setItem(SCORE_KEY, String(value))
   } catch {}
 }
 
@@ -644,11 +660,12 @@ function createView(game, t, status, wake, touch) {
       return
     }
 
-    if (phase !== "over") return
+    if (phase !== "over" && phase !== "finished") return
+    const finished = phase === "finished"
     const elapsed = game.time - game.deadAt
-    const title = ease((elapsed - 0.25) / 0.3)
-    if (title > 0) stamp(text("over", t("over"), 28, TEXT.over), center, 104 - (1 - title) * 14, title)
-    const board = ease((elapsed - 0.4) / 0.35)
+    const title = finished ? 1 : ease((elapsed - 0.25) / 0.3)
+    if (title > 0) stamp(text("over", t(finished ? "finished" : "over"), finished ? 23 : 28, TEXT.over), center, 104 - (1 - title) * 14, title)
+    const board = finished ? 1 : ease((elapsed - 0.4) / 0.35)
     if (board > 0) {
       const labels = { score: t("score"), best: t("best"), medal: t("medal"), record: t("record") }
       const value = [game.score, game.best, game.record, labels.score, labels.best, labels.medal, labels.record].join("|")
@@ -659,8 +676,8 @@ function createView(game, t, status, wake, touch) {
         board,
       )
     }
-    const hint = ease((elapsed - RESTART_DELAY) / 0.25)
-    if (hint > 0) stamp(text("restart", t("restart"), 14, TEXT.hint), center, 284, hint)
+    const hint = finished ? 1 : ease((elapsed - RESTART_DELAY) / 0.25)
+    if (hint > 0) stamp(text("restart", t(game.locked ? "waiting" : "restart"), game.locked ? 10 : 14, TEXT.hint), center, 284, hint)
   }
 
   function draw(alpha) {
@@ -751,8 +768,9 @@ function createEngine(t, options = {}) {
   const game = createGame(() => {
     wake()
     options.onStateChange?.(game.phase)
-  }, { best: readBest(), saveBest: writeBest, ...options })
+  }, { best: readBest(), lastScore: readScore(), saveBest: writeBest, saveScore: writeScore, ...options })
   const touch = () => {
+    if (options.best === undefined) game.best = Math.max(game.best, readBest())
     touched = performance.now()
   }
 
@@ -813,6 +831,7 @@ function createEngine(t, options = {}) {
 
   return {
     mount(status) {
+      if (options.best === undefined) game.best = Math.max(game.best, readBest())
       const view = createView(game, t, status, wake, touch)
       views.push(view)
       wake()
@@ -831,6 +850,11 @@ function createEngine(t, options = {}) {
       view?.root.focus({ preventScroll: true })
     },
     phase: () => game.phase,
+    setRunning(running) {
+      if (options.best === undefined) game.best = Math.max(game.best, readBest())
+      game.setRunning(running)
+      wake()
+    },
     engaged: () =>
       game.phase === "playing" || (game.phase !== "paused" && performance.now() - touched < ENGAGED_FOR),
     wake,

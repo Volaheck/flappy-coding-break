@@ -6,9 +6,6 @@
   let sessionId
   let status = { state: "unknown" }
   let closed = false
-  let autoOpened = false
-  let closeRequested = false
-  let endedAt = null
   let pollTimer
   const ru = navigator.language.toLowerCase().startsWith("ru")
   const labels = ru
@@ -45,22 +42,11 @@
     const data = result?.structuredContent
     if (!data?.status) return
     sessionId = data.sessionId || sessionId
-    if (typeof data.autoOpened === "boolean") autoOpened = data.autoOpened
     status = data.status
+    if (status.state === "running") engine.setRunning(true)
+    else if (["response-ended", "interrupted", "ended"].includes(status.state)) engine.setRunning(false)
     notice.textContent = labels[status.state] || ""
     engine.wake()
-    maybeClose()
-  }
-
-  function maybeClose() {
-    if (!["response-ended", "interrupted", "ended"].includes(status.state)) {
-      endedAt = null
-      return
-    }
-    endedAt ??= Date.now()
-    if (!autoOpened || closeRequested || engine.engaged() || engine.phase() === "paused" || Date.now() - endedAt < 3500 || typeof window.openai?.requestClose !== "function") return
-    closeRequested = true
-    Promise.resolve(window.openai.requestClose()).catch(() => {})
   }
 
   function resize(context) {
@@ -116,7 +102,7 @@
 
   window.addEventListener("pagehide", dispose, { once: true })
   request("ui/initialize", {
-    appInfo: { name: "flappy-coding-break", version: "1.1.0" },
+    appInfo: { name: "flappy-coding-break", version: "1.2.0" },
     appCapabilities: {},
     protocolVersion: "2026-01-26",
   }).then((result) => {

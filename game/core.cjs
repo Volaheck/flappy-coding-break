@@ -11,17 +11,19 @@ function hitRect(cx, cy, radius, x, y, width, height) {
   return dx * dx + dy * dy < radius * radius
 }
 
-function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = Math.random } = {}) {
+function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () => {}, saveScore = () => {}, random = Math.random } = {}) {
   const bird = { y: READY_Y, prevY: READY_Y, vy: 0, angle: 0, prevAngle: 0, wing: 0 }
   const pipes = []
   const game = {
     phase: "ready",
+    locked: false,
     time: 0,
     scroll: 0,
     prevScroll: 0,
     nextPipe: 0,
     lastGap: GROUND_Y / 2,
     score: 0,
+    lastScore: Number.isSafeInteger(lastScore) && lastScore >= 0 ? lastScore : 0,
     best: Number.isFinite(best) && best > 0 ? Math.floor(best) : 0,
     record: false,
     deadAt: 0,
@@ -34,6 +36,7 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
     pause,
     toggle,
     animating,
+    setRunning,
   }
 
   function flap() {
@@ -54,20 +57,48 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
     bird.y = bird.prevY = READY_Y + Math.sin(game.time * 7) * 5
   }
 
-  function die() {
-    game.phase = "over"
-    game.deadAt = game.time
-    game.flash = 1
-    if (bird.vy < 0) bird.vy = 0
+  function saveResult() {
+    if (game.lastScore !== game.score) {
+      game.lastScore = game.score
+      saveScore(game.score)
+    }
     if (game.score > game.best) {
       game.best = game.score
       game.record = true
       saveBest(game.best)
     }
+  }
+
+  function die() {
+    game.phase = "over"
+    game.deadAt = game.time
+    game.flash = 1
+    if (bird.vy < 0) bird.vy = 0
+    saveResult()
+    onEnd()
+  }
+
+  function setRunning(running) {
+    if (running) {
+      game.locked = false
+      return
+    }
+    if (game.locked) return
+    game.locked = true
+    if (game.phase === "ready") game.score = game.lastScore
+    game.phase = "finished"
+    game.flash = 0
+    bird.vy = 0
+    bird.prevY = bird.y
+    bird.prevAngle = bird.angle
+    game.prevScroll = game.scroll
+    saveResult()
     onEnd()
   }
 
   function press() {
+    if (game.locked) return
+    if (game.phase === "finished") reset()
     if (game.phase === "ready") {
       game.phase = "playing"
       game.nextPipe = game.scroll + MAX_W + 24
@@ -145,6 +176,7 @@ function createGame(onEnd = () => {}, { best = 0, saveBest = () => {}, random = 
   }
 
   function step(dt) {
+    if (game.phase === "finished") return
     game.time += dt
     game.prevScroll = game.scroll
     bird.prevY = bird.y

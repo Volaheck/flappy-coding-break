@@ -144,59 +144,83 @@ test("stdio survives malformed lines, fragmented UTF-8, and notifications", asyn
   assert.equal(stderr, "")
 })
 
-test("embedded bridge polls without model calls and only closes an idle automatic game", async () => {
-  async function run(autoOpened, closeSupported = true) {
-    let now = 100
-    let engaged = true
-    let phase = "playing"
-    let closed = 0
-    let nextTimer = 0
-    let agentState = "running"
-    const timers = new Map()
-    const listeners = new Map()
-    const calls = []
-    const notice = { textContent: "" }
-    const parent = { postMessage(message) {
-      calls.push(message)
-      if (!message.id) return
-      const result = message.method === "ui/initialize" ? { hostContext: { displayMode: "fullscreen" } } : { structuredContent: { sessionId: "chat-a", status: { state: agentState } } }
-      queueMicrotask(() => listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", id: message.id, result } }))
-    } }
-    const window = { parent, innerHeight: 700, openai: closeSupported ? { requestClose: () => { closed++ } } : {}, addEventListener: (name, fn) => listeners.set(name, fn) }
-    vm.runInNewContext(fs.readFileSync(path.join(root, "adapters/codex/app.js"), "utf8"), {
-      window,
-      document: { hidden: false, documentElement: { style: { setProperty() {} } }, getElementById: (id) => id === "notice" ? notice : { appendChild() {} } },
-      navigator: { language: "en" },
-      Flappy: { translate: () => (key) => key, createEngine: () => ({ mount: () => ({ root: {} }), wake() {}, dispose() {}, engaged: () => engaged, phase: () => phase }) },
-      Date: { now: () => now },
-      setTimeout: (fn, delay) => { timers.set(++nextTimer, { fn, delay }); return nextTimer },
-      clearTimeout: (id) => timers.delete(id),
-    })
-    const settle = () => new Promise((resolve) => setImmediate(resolve))
-    await settle()
-    listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { structuredContent: { sessionId: "chat-a", autoOpened, status: { state: "running" } } } } })
-    async function tick() {
+async function embeddedApp() {
+  let nextTimer = 0
+  let closeRequests = 0
+  let disposals = 0
+  let reply = { result: { structuredContent: { sessionId: "chat-a", status: { state: "running" } } } }
+  const timers = new Map()
+  const listeners = new Map()
+  const calls = []
+  const running = []
+  const notice = { textContent: "" }
+  const parent = { postMessage(message) {
+    calls.push(message)
+    if (message.id === undefined || !message.method) return
+    const response = message.method === "ui/initialize" ? { result: { hostContext: { displayMode: "fullscreen" } } } : reply
+    queueMicrotask(() => listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", id: message.id, ...response } }))
+  } }
+  const window = { parent, innerHeight: 700, openai: { requestClose: () => { closeRequests++ } }, addEventListener: (name, fn) => listeners.set(name, fn) }
+  vm.runInNewContext(fs.readFileSync(path.join(root, "adapters/codex/app.js"), "utf8"), {
+    window,
+    document: { hidden: false, documentElement: { style: { setProperty() {} } }, getElementById: (id) => id === "notice" ? notice : { appendChild() {} } },
+    navigator: { language: "en" },
+    Flappy: { translate: () => (key) => key, createEngine: () => ({ mount: () => ({ root: {} }), wake() {}, dispose() { disposals++ }, setRunning: (value) => running.push(value) }) },
+    setTimeout: (fn, delay) => { timers.set(++nextTimer, { fn, delay }); return nextTimer },
+    clearTimeout: (id) => timers.delete(id),
+  })
+  const settle = () => new Promise((resolve) => setImmediate(resolve))
+  await settle()
+  return {
+    calls, running, notice,
+    get closeRequests() { return closeRequests },
+    get disposals() { return disposals },
+    notify(data) {
+      listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { structuredContent: data } } })
+    },
+    async poll(response) {
+      reply = response
       const [id, timer] = [...timers.entries()].find(([, timer]) => timer.delay === 1000)
       timers.delete(id)
       timer.fn()
       await settle()
-    }
-    agentState = "response-ended"
-    await tick()
-    now += 5000
-    await tick()
-    assert.equal(closed, 0, "an active round must not be interrupted")
-    engaged = false
-    phase = "paused"
-    await tick()
-    assert.equal(closed, 0, "a paused round must remain resumable")
-    phase = "over"
-    await tick()
-    assert.equal(closed, autoOpened && closeSupported ? 1 : 0)
-    assert.equal(calls.some((call) => call.method === "ui/message"), false)
-    assert.ok(calls.filter((call) => call.method === "tools/call").every((call) => call.params.name === "get_status"))
+    },
+    teardown() {
+      listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", id: "teardown", method: "ui/resource-teardown" } })
+    },
   }
-  await run(true)
-  await run(false)
-  await run(true, false)
+}
+
+test("embedded game ends immediately on every terminal status and keeps its panel open", async () => {
+  for (const state of ["response-ended", "interrupted", "ended"]) {
+    const app = await embeddedApp()
+    assert.deepEqual(app.running, [true])
+    app.notify({ sessionId: "chat-a", autoOpened: true, status: { state } })
+    assert.deepEqual(app.running, [true, false], "the stop signal is immediate, regardless of the round phase")
+    for (let i = 0; i < 5; i++) await app.poll({ result: { structuredContent: { status: { state } } } })
+    assert.equal(app.closeRequests, 0, "results remain visible even in an automatically opened panel")
+    assert.equal(app.disposals, 0)
+    assert.equal(app.calls.some((call) => call.method === "ui/message"), false)
+    assert.ok(app.calls.filter((call) => call.method === "tools/call").every((call) => call.params.name === "get_status"))
+    app.teardown()
+    assert.equal(app.disposals, 1, "only host teardown disposes the game")
+  }
+})
+
+test("unknown status and connection failures cannot unlock a finished game", async () => {
+  const app = await embeddedApp()
+  await app.poll({ result: { structuredContent: { status: { state: "response-ended" } } } })
+  assert.deepEqual(app.running, [true, false])
+  for (const state of ["unknown", "unlinked"]) {
+    await app.poll({ result: { structuredContent: { status: { state } } } })
+  }
+  await app.poll({ result: { isError: true } })
+  await app.poll({ error: { code: -32603, message: "Connection lost" } })
+  await app.poll({ result: {} })
+  assert.deepEqual(app.running, [true, false], "loss of status preserves the game's last known lock")
+  assert.equal(app.closeRequests, 0)
+  await app.poll({ result: { structuredContent: { status: { state: "running" } } } })
+  assert.deepEqual(app.running, [true, false, true], "only a running response enables another round")
+  assert.equal(app.notice.textContent, "")
+  app.teardown()
 })

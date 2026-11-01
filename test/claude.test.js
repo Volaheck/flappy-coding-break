@@ -75,8 +75,8 @@ function createHost(options = {}, surfaces = ["desktop"]) {
     now = end
     await flush()
   }
-  const state = (phase, animating = phase === "playing", best = 0) => emit("ui.message", {
-    requestId: PANE, element: "flappy-game", data: { type: "state", phase, animating, best },
+  const state = (phase, animating = phase === "playing", best = 0, lastScore = 0) => emit("ui.message", {
+    requestId: PANE, element: "flappy-game", data: { type: "state", phase, animating, best, lastScore },
   })
   register(on, options)
   return { emit, advance, state, panes, timers, opened, closed, commands, store }
@@ -93,37 +93,36 @@ test("Claude registers an immediate command and cancels the game for short turns
   assert.equal(host.opened.length, 0)
 })
 
-test("Claude auto-opens without taking focus and closes after an idle completion", async () => {
+test("Claude auto-opens without taking focus and leaves completion results visible", async () => {
   const host = createHost()
   await host.emit("turn.start", { turnId: "a" })
   await host.advance(1000)
   assert.equal(host.opened.length, 1)
   assert.equal(host.opened[0].focus, undefined)
   await host.emit("turn.complete", { turnId: "a", reason: "answer", isAborted: false })
-  await host.advance(1499)
+  await host.advance(10000)
   assert.ok(host.panes.has(PANE))
-  await host.advance(1)
-  assert.ok(!host.panes.has(PANE))
+  assert.equal(host.closed.length, 0)
+  assert.equal(host.timers.size, 0)
+  const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
+  assert.equal(tree.props.props.status, "done")
 })
 
-test("Claude keeps a playing or paused round, then closes after the game settles", async () => {
-  const host = createHost()
+test("Claude persists the final score without auto-closing, including legacy autoClose true", async () => {
+  const host = createHost({ autoClose: true })
   await host.emit("turn.start", { turnId: "a" })
   await host.advance(1000)
   await host.state("playing")
   await host.emit("turn.complete", { turnId: "a", reason: "aborted", isAborted: true })
   await host.advance(5000)
   assert.ok(host.panes.has(PANE))
-  await host.state("paused", false)
-  await host.advance(5000)
+  await host.state("finished", false, 10, 7)
+  await host.advance(10000)
   assert.ok(host.panes.has(PANE))
-  await host.state("over", true)
-  await host.advance(2000)
-  assert.ok(host.panes.has(PANE))
-  await host.state("over", false, 10)
-  await host.advance(1500)
-  assert.ok(!host.panes.has(PANE))
   assert.equal(host.store.get("flappy.best"), 10)
+  assert.equal(host.store.get("flappy.lastScore"), 7)
+  await host.state("ready", true, 10, 0)
+  assert.equal(host.store.get("flappy.lastScore"), 7)
 })
 
 test("Claude ignores subagent completions and stale main turns", async () => {
@@ -137,9 +136,13 @@ test("Claude ignores subagent completions and stale main turns", async () => {
   await host.advance(3000)
   assert.ok(host.panes.has(PANE))
   assert.equal(host.closed.length, 0)
+  let tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
+  assert.equal(tree.props.props.status, "running")
   await host.emit("turn.complete", { turnId: "b", reason: "error", isAborted: false })
   await host.advance(1500)
-  assert.ok(!host.panes.has(PANE))
+  assert.ok(host.panes.has(PANE))
+  tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
+  assert.equal(tree.props.props.status, "done")
 })
 
 test("Claude manually opened panes survive completion and manual close cancels pending timers", async () => {
@@ -246,6 +249,65 @@ test("Claude Client plays locally, pauses its timer, and posts state changes rat
   assert.equal(client.surface.state.game.phase, "paused")
   client.pointer("down")
   assert.equal(client.surface.state.game.phase, "playing")
+})
+
+test("Claude finishes live and paused rounds immediately, freezes the result, and locks every input", () => {
+  for (const paused of [false, true]) {
+    const client = createSurface()
+    const props = { best: 5, lastScore: 3, locale: "en", focused: true, status: "running", bodyRows: 29 }
+    FlappyClient(props, client.surface)
+    client.key("w")
+    client.surface.state.game.score = 9
+    if (paused) client.key("p")
+    const tree = FlappyClient({ ...props, status: "done" }, client.surface)
+    const game = client.surface.state.game
+    assert.equal(game.phase, "finished")
+    assert.equal(game.locked, true)
+    assert.equal(game.score, 9)
+    assert.equal(game.lastScore, 9)
+    assert.equal(game.best, 9)
+    assert.equal(client.timers.size, 0)
+    assert.equal(allElements(tree).filter((element) => element.type === "Button").length, 0)
+    assert.ok(JSON.stringify(tree).includes("Round complete"))
+    assert.ok(JSON.stringify(tree).includes("Score: 9"))
+    assert.ok(JSON.stringify(tree).includes("Play again when the agent starts working"))
+    const position = game.bird.y
+    client.frames(100)
+    client.key("w")
+    client.key("p")
+    client.pointer("down")
+    FlappyClient({ ...props, status: "done" }, client.surface)
+    FlappyClient({ ...props, status: "" }, client.surface)
+    assert.equal(game.phase, "finished")
+    assert.equal(game.locked, true)
+    assert.equal(game.score, 9)
+    assert.equal(game.bird.y, position)
+    assert.equal(client.posts.filter((entry) => entry.phase === "finished").length, 1)
+    FlappyClient(props, client.surface)
+    assert.equal(game.phase, "finished")
+    assert.equal(game.locked, false)
+    assert.equal(game.score, 9)
+    client.key("w")
+    assert.equal(game.phase, "playing")
+    assert.equal(game.score, 0)
+  }
+})
+
+test("Claude reopens a completed response with its persisted score and best", async () => {
+  const host = createHost()
+  host.store.set("flappy.best", 12)
+  host.store.set("flappy.lastScore", 8)
+  await host.emit("session.start", { surface: "desktop", isInteractive: true })
+  await host.emit("turn.start", { turnId: "a" })
+  await host.emit("turn.complete", { turnId: "a", reason: "answer" })
+  const entry = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
+  const client = createSurface()
+  const drawing = FlappyClient(entry.props.props, client.surface)
+  assert.equal(client.surface.state.game.score, 8)
+  assert.equal(client.surface.state.game.best, 12)
+  assert.equal(client.surface.state.game.locked, true)
+  assert.ok(JSON.stringify(drawing).includes("Score: 8"))
+  assert.equal(client.timers.size, 0)
 })
 
 function measuredRows(element) {

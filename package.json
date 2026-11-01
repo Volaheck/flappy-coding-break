@@ -1,6 +1,6 @@
 {
   "name": "opencode-flappybird",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Flappy Coding Break: play Flappy Bird inside OpenCode, Claude Code, and Codex while your agent works",
   "type": "module",
   "license": "MIT",

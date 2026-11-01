@@ -33,7 +33,7 @@ test('the pane produces a supported Client on terminal and desktop', async ($, o
   }
 })
 
-test('a turn opens after the delay and closes after completion', async ($, on) => {
+test('a turn opens after the delay and leaves the result pane open after completion', async ($, on) => {
   const clock = mock.clock(on)
   const opened = []
   const closed = []
@@ -51,5 +51,71 @@ test('a turn opens after the delay and closes after completion', async ($, on) =
   expect(opened.length).toBe(1)
   await $.turn.complete({ turnId: 'turn-1', answer: 'done', durationMs: 1000, isAborted: false, usage: null })
   await clock.advance(1500)
-  expect(closed.length).toBe(1)
+  expect(closed.length).toBe(0)
+})
+
+test('completed live and paused games stay locked until the next main turn on both surfaces', async ($, on) => {
+  mock.clock(on)
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  on('store.set', () => ({ value: undefined }))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    for (const paused of [false, true]) {
+      const turnId = `${surface}-${paused}`
+      await $.turn.start({ turnId, text: 'work' })
+      const ui = await $.ui.mount({
+        plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface,
+        viewport: { columns: 100, rows: 40 },
+        props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
+      })
+      await ui.key({ key: 'w' })
+      if (paused) await ui.key({ key: 'p' })
+      await $.turn.complete({ turnId, answer: 'done', durationMs: 1, isAborted: false, reason: 'answer' })
+      expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Play again when the agent starts working/, in: 'flappy-game' })).toBeDefined()
+      expect(await ui.find({ type: 'Button', in: 'flappy-game' })).toBeUndefined()
+      await ui.key({ key: 'w' })
+      await ui.key({ key: 'p' })
+      await ui.pointer({ type: 'down', x: 4, y: 4, button: 'left' })
+      await ui.advance(3000)
+      expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeDefined()
+      await $.turn.start({ turnId: `${turnId}-next`, text: 'more work' })
+      expect(await ui.find({ type: 'Button', key: 'flap', in: 'flappy-game' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeDefined()
+      await ui.key({ key: 'w' })
+      expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeUndefined()
+      expect(await ui.find({ type: 'Text', text: /Score: 0/, in: 'flappy-game' })).toBeDefined()
+      await ui.unmount()
+    }
+  }
+})
+
+test('stored results survive a native remount and subagent completion does not finish the main game', async ($, on) => {
+  mock.clock(on)
+  on('store.get', ($, e) => ({ value: e.key === 'flappy.best' ? 12 : 8 }))
+  on('store.set', () => ({ value: undefined }))
+  on('command.register', () => ({ value: undefined }))
+  on('session.start', () => ({ cwd: '/work' }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.session.start({ surface: 'desktop', isInteractive: true, cwd: '/work' })
+  await $.turn.start({ turnId: 'main', text: 'work' })
+  const ui = await $.ui.mount({
+    plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
+    viewport: { columns: 100, rows: 40 },
+    props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
+  })
+  await $.turn.complete({ turnId: 'child', agentId: 'subagent', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
+  expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeUndefined()
+  await $.turn.complete({ turnId: 'main', answer: '', durationMs: 1, isAborted: true, reason: 'aborted' })
+  expect(await ui.find({ type: 'Text', text: /Score: 8.*Best: 12/, in: 'flappy-game' })).toBeDefined()
+  await ui.unmount()
+  const reopened = await $.ui.mount({
+    plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
+    viewport: { columns: 100, rows: 40 },
+    props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
+  })
+  expect(await reopened.find({ type: 'Text', text: /Score: 8.*Best: 12/, in: 'flappy-game' })).toBeDefined()
+  expect(await reopened.find({ type: 'Button', in: 'flappy-game' })).toBeUndefined()
+  await reopened.unmount()
 })
