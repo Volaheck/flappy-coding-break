@@ -5,6 +5,7 @@ const fs = require("node:fs")
 const path = require("node:path")
 const { StringDecoder } = require("node:string_decoder")
 const { dataDirectory, identifier, readStatus } = require("./state.cjs")
+const { claimPanel, panelStatus } = require("./panel.cjs")
 const { version } = require("../../package.json")
 
 const RESOURCE_URI = "ui://flappy-coding-break/game-v1.html"
@@ -12,6 +13,7 @@ const MIME_TYPE = "text/html;profile=mcp-app"
 const MAX_MESSAGE = 4 * 1024 * 1024
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 const inputSchema = { type: "object", properties: { session_id: { type: "string", minLength: 1, maxLength: 256 } }, additionalProperties: false }
+const statusSchema = { ...inputSchema, properties: { ...inputSchema.properties, panel_id: { type: "string", minLength: 1, maxLength: 256 } } }
 const openSchema = { ...inputSchema, properties: { ...inputSchema.properties, auto_opened: { type: "boolean", description: "True only for the automatic opening requested by the Flappy turn-start hook." } } }
 const tools = [
   {
@@ -29,8 +31,16 @@ const tools = [
     name: "get_status",
     title: "Flappy agent status",
     description: "Read current-chat lifecycle status for the game UI. This local read never invokes the model.",
-    inputSchema,
+    inputSchema: statusSchema,
     annotations,
+    _meta: { ui: { visibility: ["app"] }, "openai/visibility": "private", "openai/widgetAccessible": true },
+  },
+  {
+    name: "claim_panel",
+    title: "Activate this Flappy panel",
+    description: "Register a newly mounted game panel. Previous Flappy panels on this machine save their result and close themselves.",
+    inputSchema,
+    annotations: { ...annotations, readOnlyHint: false, idempotentHint: false },
     _meta: { ui: { visibility: ["app"] }, "openai/visibility": "private", "openai/widgetAccessible": true },
   },
 ]
@@ -76,17 +86,18 @@ function createHandler({ directory = dataDirectory(), html = resourceHtml } = {}
         else if (method === "resources/templates/list") result = { resourceTemplates: [] }
         else if (method === "resources/read") {
           if (params.uri !== RESOURCE_URI) throw rpcError(-32002, "Resource not found")
-          result = { contents: [{ uri: RESOURCE_URI, mimeType: MIME_TYPE, text: html(), _meta: { ui: { prefersBorder: false, csp: { connectDomains: [], resourceDomains: [] } } } }] }
+          result = { contents: [{ uri: RESOURCE_URI, mimeType: MIME_TYPE, text: html(), _meta: { ui: { prefersBorder: false, csp: { connectDomains: [], resourceDomains: [] } }, "openai/ui": { availableDisplayModes: ["fullscreen"], preferredDisplayMode: "fullscreen" } } }] }
         } else if (method === "tools/call") {
           if (!tools.some((tool) => tool.name === params.name)) throw rpcError(-32602, "Unknown tool")
           const args = params.arguments ?? {}
-          const allowed = params.name === "open_flappy" ? ["session_id", "auto_opened"] : ["session_id"]
-          if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => !allowed.includes(key)) || (args.session_id !== undefined && !identifier(args.session_id)) || (args.auto_opened !== undefined && typeof args.auto_opened !== "boolean")) throw rpcError(-32602, "Invalid tool arguments")
+          const allowed = params.name === "open_flappy" ? ["session_id", "auto_opened"] : params.name === "get_status" ? ["session_id", "panel_id"] : ["session_id"]
+          if (!args || typeof args !== "object" || Array.isArray(args) || Object.keys(args).some((key) => !allowed.includes(key)) || (args.session_id !== undefined && !identifier(args.session_id)) || (args.panel_id !== undefined && !identifier(args.panel_id)) || (args.auto_opened !== undefined && typeof args.auto_opened !== "boolean")) throw rpcError(-32602, "Invalid tool arguments")
           const sessionId = sessionFrom(params)
           const status = readStatus(sessionId, directory)
+          const panel = params.name === "claim_panel" ? claimPanel(directory) : args.panel_id ? panelStatus(args.panel_id, directory) : undefined
           result = {
             content: [{ type: "text", text: params.name === "open_flappy" ? "Flappy Bird is available in this chat's embedded app panel. Keep working; the game updates its own status." : status.state }],
-            structuredContent: { sessionId, status, ...(params.name === "open_flappy" ? { autoOpened: args.auto_opened === true } : {}) },
+            structuredContent: { sessionId, status, ...(panel ? { panel } : {}), ...(params.name === "open_flappy" ? { autoOpened: args.auto_opened === true } : {}) },
           }
         } else throw rpcError(-32601, "Method not found")
       }

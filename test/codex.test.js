@@ -184,10 +184,14 @@ test("MCP exposes a native thread entrypoint and keeps status app-only", async (
   assert.equal(open._meta.ui.resourceUri, RESOURCE_URI)
   assert.deepEqual(open._meta["openai/ui"].entrypoints, [{ type: "thread" }])
   assert.deepEqual(status._meta.ui.visibility, ["app"])
+  const claim = listed.result.tools.find((tool) => tool.name === "claim_panel")
+  assert.deepEqual(claim._meta.ui.visibility, ["app"])
+  assert.equal(claim.annotations.readOnlyHint, false)
   const resource = await handle({ jsonrpc: "2.0", id: 3, method: "resources/read", params: { uri: RESOURCE_URI } })
   assert.equal(resource.result.contents[0].mimeType, MIME_TYPE)
   assert.equal(resource.result.contents[0].text, "<canvas></canvas>")
   assert.deepEqual(resource.result.contents[0]._meta.ui.csp.connectDomains, [])
+  assert.deepEqual(resource.result.contents[0]._meta["openai/ui"].availableDisplayModes, ["fullscreen"])
 })
 
 test("host thread identity takes priority and missing identity never chooses latest chat", async (t) => {
@@ -237,7 +241,7 @@ test("stdio survives malformed lines, fragmented UTF-8, and notifications", asyn
   assert.equal(stderr, "")
 })
 
-async function embeddedApp() {
+async function embeddedApp({ hidden = false, failClose = false } = {}) {
   let nextTimer = 0
   let closeRequests = 0
   let disposals = 0
@@ -250,13 +254,15 @@ async function embeddedApp() {
   const parent = { postMessage(message) {
     calls.push(message)
     if (message.id === undefined || !message.method) return
-    const response = message.method === "ui/initialize" ? { result: { hostContext: { displayMode: "fullscreen" } } } : reply
+    const response = message.method === "ui/initialize" ? { result: { hostContext: { displayMode: "fullscreen" } } }
+      : message.params.name === "claim_panel" ? { result: { structuredContent: { ...reply.result.structuredContent, panel: { id: "panel-a", active: true } } } }
+        : reply
     queueMicrotask(() => listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", id: message.id, ...response } }))
   } }
-  const window = { parent, innerHeight: 700, openai: { requestClose: () => { closeRequests++ } }, addEventListener: (name, fn) => listeners.set(name, fn) }
+  const window = { parent, innerHeight: 700, openai: { requestClose: () => { closeRequests++; if (failClose) throw new Error("Host rejected close") } }, addEventListener: (name, fn) => listeners.set(name, fn) }
   vm.runInNewContext(fs.readFileSync(path.join(root, "adapters/codex/app.js"), "utf8"), {
     window,
-    document: { hidden: false, documentElement: { style: { setProperty() {} } }, getElementById: (id) => id === "notice" ? notice : { appendChild() {} } },
+    document: { hidden, documentElement: { style: { setProperty() {} } }, getElementById: (id) => id === "notice" ? notice : { appendChild() {} } },
     navigator: { language: "en" },
     Flappy: { translate: () => (key) => key, createEngine: () => ({ mount: () => ({ root: {} }), wake() {}, dispose() { disposals++ }, setRunning: (value) => running.push(value) }) },
     setTimeout: (fn, delay) => { timers.set(++nextTimer, { fn, delay }); return nextTimer },
@@ -268,6 +274,7 @@ async function embeddedApp() {
     calls, running, notice,
     get closeRequests() { return closeRequests },
     get disposals() { return disposals },
+    get pendingTimers() { return timers.size },
     notify(data) {
       listeners.get("message")({ source: parent, data: { jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { structuredContent: data } } })
     },
@@ -294,7 +301,8 @@ test("embedded game ends immediately on every terminal status and keeps its pane
     assert.equal(app.closeRequests, 0, "results remain visible even in an automatically opened panel")
     assert.equal(app.disposals, 0)
     assert.equal(app.calls.some((call) => call.method === "ui/message"), false)
-    assert.ok(app.calls.filter((call) => call.method === "tools/call").every((call) => call.params.name === "get_status"))
+    assert.equal(app.calls.filter((call) => call.method === "tools/call" && call.params.name === "claim_panel").length, 1)
+    assert.ok(app.calls.filter((call) => call.method === "tools/call").every((call) => ["claim_panel", "get_status"].includes(call.params.name)))
     app.teardown()
     assert.equal(app.disposals, 1, "only host teardown disposes the game")
   }
@@ -316,4 +324,55 @@ test("unknown status and connection failures cannot unlock a finished game", asy
   assert.deepEqual(app.running, [true, false, true], "only a running response enables another round")
   assert.equal(app.notice.textContent, "")
   app.teardown()
+})
+
+test("superseded panels save and close even when hidden, without reopening from late results", async () => {
+  for (const hidden of [false, true]) {
+    const app = await embeddedApp({ hidden })
+    const init = app.calls.find((call) => call.method === "ui/initialize")
+    assert.deepEqual([...init.params.appCapabilities.availableDisplayModes], ["fullscreen"])
+    await app.poll({ result: { structuredContent: { status: { state: "running" }, panel: { id: "panel-a", active: false } } } })
+    assert.deepEqual(app.running, [true, false], "replacement saves and freezes the round before closing")
+    assert.equal(app.closeRequests, 1)
+    assert.equal(app.disposals, 1)
+    assert.equal(app.pendingTimers, 0)
+    app.notify({ status: { state: "running" } })
+    app.teardown()
+    assert.deepEqual(app.running, [true, false])
+    assert.equal(app.disposals, 1)
+  }
+})
+
+test("a rejected native close is visible and leaves the replaced game locked", async () => {
+  const app = await embeddedApp({ failClose: true })
+  await app.poll({ result: { structuredContent: { panel: { id: "panel-a", active: false } } } })
+  assert.deepEqual(app.running, [true, false])
+  assert.equal(app.closeRequests, 1)
+  assert.equal(app.pendingTimers, 0)
+  assert.match(app.notice.textContent, /could not close automatically/)
+})
+
+test("a new panel supersedes every previous panel across chats and MCP connections", async (t) => {
+  const directory = stateDirectory(t)
+  const handles = [createHandler({ directory }), createHandler({ directory }), createHandler({ directory })]
+  await Promise.all(handles.map((handle) => handle(initialize)))
+  let id = 10
+  const call = async (handle, name, session, panel) => {
+    const reply = await handle({ jsonrpc: "2.0", id: id++, method: "tools/call", params: { name, arguments: { session_id: session, ...(panel ? { panel_id: panel } : {}) } } })
+    assert.equal(reply.error, undefined)
+    return reply.result.structuredContent
+  }
+  const first = await call(handles[0], "claim_panel", "chat-a")
+  const second = await call(handles[1], "claim_panel", "chat-a")
+  const third = await call(handles[2], "claim_panel", "chat-b")
+  assert.notEqual(first.panel.id, second.panel.id)
+  assert.notEqual(second.panel.id, third.panel.id)
+  assert.equal((await call(handles[0], "get_status", "chat-a", first.panel.id)).panel.active, false)
+  assert.equal((await call(handles[1], "get_status", "chat-a", second.panel.id)).panel.active, false)
+  assert.equal((await call(handles[2], "get_status", "chat-b", third.panel.id)).panel.active, true)
+  await call(handles[0], "open_flappy", "chat-a")
+  assert.equal((await call(handles[2], "get_status", "chat-b", third.panel.id)).panel.active, true, "only a mounted panel claims ownership")
+  const contents = fs.readFileSync(path.join(directory, "active-panel.json"), "utf8")
+  assert.equal(contents.includes("chat-b"), false)
+  assert.deepEqual(JSON.parse(contents), { id: third.panel.id })
 })

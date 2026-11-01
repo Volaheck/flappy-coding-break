@@ -76,6 +76,8 @@ npx github:Volaheck/flappy-coding-break doctor --codex
 
 ## Play
 
+Opening a new Flappy panel closes the previous Flappy panels in that host, including those from earlier chats. Other apps and unrelated panels are unaffected. Codex and Claude check ownership once per second without model calls; a host-suspended view can close when it resumes. Older installed versions must reload before their panels can participate.
+
 When the agent finishes its response, the current round ends immediately, including if it is paused. The final score is saved and counted toward your best score even if the bird has not crashed. The panel stays open with both results. Starting or resuming play is blocked until the agent starts working again; the next click or flap key starts a new round.
 
 The previous `autoClose` setting is no longer used. Close the results panel manually whenever you want.

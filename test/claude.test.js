@@ -11,30 +11,37 @@ const PANE = "flappy-coding-break"
 const elements = Object.fromEntries(["Box", "Text", "Button", "Client"].map((type) => [type, (props) => ({ type, props })]))
 const flush = async () => { for (let index = 0; index < 20; index++) await Promise.resolve() }
 
-function createHost(options = {}, surfaces = ["desktop"]) {
+function createHost(options = {}, surfaces = ["desktop"], shared = {}) {
   const handlers = []
   const panes = new Map()
   const timers = new Map()
-  const store = new Map()
+  const store = shared.store ?? new Map()
   const opened = []
   const closed = []
   const commands = []
+  const invalidations = []
   let now = 0
   let timerId = 0
   const host = {
     command: { register: async (command) => { commands.push(command) } },
-    session: { surfaces: async () => surfaces },
+    session: { surfaces: async () => surfaces, id: async () => shared.sessionId ?? "test-session" },
     store: { get: async (key) => store.get(key), set: async (key, value) => { store.set(key, value) } },
     clock: {
+      now: async () => now,
       after(ms, fn) {
         const id = ++timerId
         timers.set(id, { at: now + ms, fn })
         return { cancel: () => timers.delete(id) }
       },
+      every(ms, fn) {
+        const id = ++timerId
+        timers.set(id, { at: now + ms, interval: ms, fn })
+        return { cancel: () => timers.delete(id) }
+      },
     },
     ui: {
       log: () => {},
-      invalidate: () => {},
+      invalidate: (event) => { invalidations.push(event) },
       resolve: () => elements,
       panes: async () => [...panes.values()],
       open: async (pane) => {
@@ -67,19 +74,20 @@ function createHost(options = {}, surfaces = ["desktop"]) {
       const entry = [...timers.entries()].sort((a, b) => a[1].at - b[1].at).find(([, timer]) => timer.at <= end)
       if (!entry) break
       const [id, timer] = entry
-      timers.delete(id)
-      now = timer.at
+      if (timer.interval) timer.at += timer.interval
+      else timers.delete(id)
+      now = timer.interval ? timer.at - timer.interval : timer.at
       timer.fn()
       await flush()
     }
     now = end
     await flush()
   }
-  const state = (phase, animating = phase === "playing", best = 0, lastScore = 0) => emit("ui.message", {
-    requestId: PANE, element: "flappy-game", data: { type: "state", phase, animating, best, lastScore },
+  const state = (phase, animating = phase === "playing", best = 0, lastScore = 0, score = lastScore) => emit("ui.message", {
+    requestId: PANE, element: "flappy-game", data: { type: "state", phase, animating, best, lastScore, score },
   })
   register(on, options)
-  return { emit, advance, state, panes, timers, opened, closed, commands, store }
+  return { emit, advance, state, panes, timers, opened, closed, commands, store, invalidations, api: host }
 }
 
 test("Claude registers an immediate command and cancels the game for short turns", async () => {
@@ -103,7 +111,7 @@ test("Claude auto-opens without taking focus and leaves completion results visib
   await host.advance(10000)
   assert.ok(host.panes.has(PANE))
   assert.equal(host.closed.length, 0)
-  assert.equal(host.timers.size, 0)
+  assert.equal(host.timers.size, 1, "ownership is checked only while the result pane remains open")
   const tree = await host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
   assert.equal(tree.props.props.status, "done")
 })
@@ -196,6 +204,124 @@ test("Claude pane loads a literal native Client module and forwards unrelated pa
   assert.deepEqual(await host.emit("ui.render", { component: "Pane", requestId: "other" }), { forwarded: true })
 })
 
+test("a new Claude pane closes older sessions, saves their latest score, and leaves unrelated panes alone", async () => {
+  for (const oldAuto of [false, true]) {
+    const store = new Map([["flappy.best", 20]])
+    const older = createHost({}, ["desktop"], { store, sessionId: "older" })
+    const newer = createHost({}, ["desktop"], { store, sessionId: "newer" })
+    if (oldAuto) {
+      await older.emit("turn.start", { turnId: "old" })
+      await older.advance(1000)
+    } else await older.emit("command.run", { command: "flappy" })
+    older.panes.set("unrelated", { id: "unrelated" })
+    await older.state("playing", true, 3, 2, 9)
+    if (oldAuto) await newer.emit("command.run", { command: "flappy" })
+    else {
+      await newer.emit("turn.start", { turnId: "new" })
+      await newer.advance(1000)
+    }
+    const owner = store.get("flappy.pane.owner")
+    await older.advance(1000)
+    assert.deepEqual(older.closed, [PANE])
+    assert.ok(older.panes.has("unrelated"))
+    assert.ok(newer.panes.has(PANE))
+    assert.equal(store.get("flappy.pane.owner"), owner, "the older session never overwrites the new claim")
+    assert.equal(store.get("flappy.best"), 20, "closing an old session cannot lower another session's record")
+    assert.equal(store.get("flappy.lastScore"), 9)
+    assert.equal(older.timers.size, 0)
+    await older.advance(10000)
+    assert.deepEqual(older.closed, [PANE])
+    await newer.emit("session.end", { reason: "other" })
+    assert.equal(newer.timers.size, 0)
+  }
+})
+
+test("Claude redraws and repeated turn starts do not reclaim ownership of an existing pane", async () => {
+  const store = new Map()
+  const older = createHost({}, ["desktop"], { store, sessionId: "older" })
+  const newer = createHost({}, ["desktop"], { store, sessionId: "newer" })
+  await older.emit("command.run", { command: "flappy" })
+  const first = store.get("flappy.pane.owner")
+  await older.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: {} })
+  await older.emit("turn.start", { turnId: "same-pane" })
+  await older.advance(1000)
+  assert.equal(store.get("flappy.pane.owner"), first)
+  assert.equal(older.opened.length, 1)
+  await newer.emit("command.run", { command: "flappy" })
+  const next = store.get("flappy.pane.owner")
+  await older.emit("turn.start", { turnId: "pending-open" })
+  await older.advance(3000)
+  assert.equal(older.opened.length, 1, "superseding cancels the old session's pending auto-open")
+  assert.equal(store.get("flappy.pane.owner"), next)
+})
+
+test("the newest Claude pane refreshes the record saved when an older live game closes", async () => {
+  const store = new Map()
+  const older = createHost({}, ["desktop"], { store, sessionId: "older" })
+  const newer = createHost({}, ["desktop"], { store, sessionId: "newer" })
+  await older.emit("command.run", { command: "flappy" })
+  await older.state("playing", true, 0, 0, 8)
+  await newer.emit("command.run", { command: "flappy" })
+  const render = () => newer.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true } })
+  const client = createSurface()
+  FlappyClient((await render()).props.props, client.surface)
+  assert.equal(client.surface.state.game.best, 0)
+  await older.advance(1000)
+  assert.equal(store.get("flappy.best"), 8)
+  await newer.advance(1000)
+  assert.deepEqual(newer.invalidations, ["ui.render"])
+  const updated = FlappyClient((await render()).props.props, client.surface)
+  assert.equal(client.surface.state.game.best, 8)
+  assert.match(JSON.stringify(updated), /Best: 8/)
+  assert.equal(client.surface.state.game.phase, "ready", "the record refresh does not start or end a round")
+  await newer.advance(1000)
+  assert.equal(newer.invalidations.length, 1, "an unchanged record does not trigger another redraw")
+})
+
+test("a delayed Claude ownership read cannot close a pane reopened after the read started", async () => {
+  const store = new Map()
+  const host = createHost({}, ["desktop"], { store, sessionId: "session" })
+  await host.emit("command.run", { command: "flappy" })
+  let resolveOwner
+  const originalGet = host.api.store.get
+  host.api.store.get = (key) => key === "flappy.pane.owner"
+    ? new Promise((resolve) => { resolveOwner = resolve })
+    : originalGet(key)
+  await host.advance(1000)
+  assert.equal(typeof resolveOwner, "function")
+  await host.emit("command.run", { command: "flappy" })
+  host.api.store.get = originalGet
+  await host.emit("command.run", { command: "flappy" })
+  const reopenedOwner = store.get("flappy.pane.owner")
+  resolveOwner("another-session:old-observation")
+  await flush()
+  assert.ok(host.panes.has(PANE))
+  assert.equal(host.closed.length, 1, "only the explicit manual close occurred")
+  assert.equal(store.get("flappy.pane.owner"), reopenedOwner)
+  await host.advance(1000)
+  assert.ok(host.panes.has(PANE))
+})
+
+test("Claude claims ownership only after the host actually opened the pane", async () => {
+  const store = new Map([["flappy.pane.owner", "existing-session:existing-pane"]])
+  const host = createHost({}, ["desktop"], { store })
+  host.api.ui.open = async () => {}
+  await host.emit("command.run", { command: "flappy" })
+  assert.equal(store.get("flappy.pane.owner"), "existing-session:existing-pane")
+  assert.equal(host.timers.size, 0)
+})
+
+test("Claude reloads resume watching existing panes without claiming them again", async () => {
+  const store = new Map([["flappy.pane.owner", "newer:claim"]])
+  const host = createHost({}, ["desktop"], { store, sessionId: "older" })
+  host.panes.set(PANE, { id: PANE })
+  await host.emit("session.start", {})
+  assert.equal(store.get("flappy.pane.owner"), "newer:claim")
+  await host.advance(1000)
+  assert.equal(host.panes.has(PANE), false)
+  assert.equal(host.timers.size, 0)
+})
+
 function createSurface() {
   let listener
   let pointer
@@ -249,6 +375,20 @@ test("Claude Client plays locally, pauses its timer, and posts state changes rat
   assert.equal(client.surface.state.game.phase, "paused")
   client.pointer("down")
   assert.equal(client.surface.state.game.phase, "playing")
+})
+
+test("Claude Client reports score changes once without posting every animation frame", () => {
+  const client = createSurface()
+  FlappyClient({ best: 0, lastScore: 0, locale: "en", focused: true, status: "running", bodyRows: 29 }, client.surface)
+  client.key("w")
+  client.frames(3)
+  const beforeScore = client.posts.length
+  client.surface.state.game.score = 1
+  client.frames(1)
+  assert.equal(client.posts.length, beforeScore + 1)
+  assert.equal(client.posts.at(-1).score, 1)
+  client.frames(3)
+  assert.equal(client.posts.length, beforeScore + 1)
 })
 
 test("Claude finishes live and paused rounds immediately, freezes the result, and locks every input", () => {

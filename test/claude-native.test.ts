@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 test('registers the Flappy command with a stored record', async ($, on) => {
   const commands = []
   on('store.get', () => ({ value: 7 }))
+  on('ui.panes', () => ({ value: [] }))
   on('command.register', ($, e) => { commands.push(e); return { value: undefined } })
   on('session.start', () => ({ cwd: '/work' }))
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
@@ -93,6 +94,7 @@ test('completed live and paused games stay locked until the next main turn on bo
 test('stored results survive a native remount and subagent completion does not finish the main game', async ($, on) => {
   mock.clock(on)
   on('store.get', ($, e) => ({ value: e.key === 'flappy.best' ? 12 : 8 }))
+  on('ui.panes', () => ({ value: [] }))
   on('store.set', () => ({ value: undefined }))
   on('command.register', () => ({ value: undefined }))
   on('session.start', () => ({ cwd: '/work' }))
@@ -118,4 +120,39 @@ test('stored results survive a native remount and subagent completion does not f
   expect(await reopened.find({ type: 'Text', text: /Score: 8.*Best: 12/, in: 'flappy-game' })).toBeDefined()
   expect(await reopened.find({ type: 'Button', in: 'flappy-game' })).toBeUndefined()
   await reopened.unmount()
+})
+
+test('a newer pane claim closes this native pane and saves its latest reported score without a redraw', async ($, on) => {
+  const clock = mock.clock(on)
+  const store = new Map<string, unknown>([['flappy.best', 12]])
+  const panes = new Map<string, unknown>()
+  const closed: string[] = []
+  on('store.get', ($, e) => ({ value: store.get(e.key) }))
+  on('store.set', ($, e) => { store.set(e.key, e.value); return { value: undefined } })
+  on('session.id', () => ({ value: 'old-session' }))
+  on('session.surfaces', () => ({ value: ['desktop'] }))
+  on('ui.panes', () => ({ value: [...panes.values()] }))
+  on('ui.open', ($, e) => {
+    panes.set(e.id, { id: e.id, title: e.title, isShown: true, isFocused: true, isPlaced: true })
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', ($, e) => { panes.delete(e.id); closed.push(e.id); return { value: undefined } })
+  await $.command.run({ command: 'flappy', args: '' })
+  expect(typeof store.get('flappy.pane.owner')).toBe('string')
+  const ui = await $.ui.mount({
+    plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
+    viewport: { columns: 100, rows: 40 },
+    props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
+  })
+  await ui.post({ type: 'state', phase: 'playing', animating: true, score: 9, best: 3, lastScore: 2 }, { in: 'flappy-game' })
+  // Another session owns the shared store now; this surface need not render again.
+  store.set('flappy.pane.owner', 'new-session:new-pane')
+  await clock.advance(1000)
+  expect(closed).toEqual(['flappy-coding-break'])
+  expect(store.get('flappy.pane.owner')).toBe('new-session:new-pane')
+  expect(store.get('flappy.lastScore')).toBe(9)
+  expect(store.get('flappy.best')).toBe(12)
+  await clock.advance(10000)
+  expect(closed.length).toBe(1)
+  await ui.unmount()
 })

@@ -4,13 +4,15 @@
   const pending = new Map()
   let nextId = 0
   let sessionId
+  let panelId
   let status = { state: "unknown" }
   let closed = false
   let pollTimer
+  let closing = false
   const ru = navigator.language.toLowerCase().startsWith("ru")
   const labels = ru
-    ? { connecting: "Подключение…", unknown: "Игра готова · для статуса агента разрешите хуки Flappy", unlinked: "Игра готова · откройте Flappy в текущем чате для статуса агента", disconnected: "Нет связи со статусом агента", response: "Ответ готов", interrupted: "Агент остановлен", ended: "Сессия завершена" }
-    : { connecting: "Connecting…", unknown: "Ready to play · trust Flappy hooks for agent status", unlinked: "Ready to play · open Flappy in this chat to link agent status", disconnected: "Agent status disconnected", response: "Response ready", interrupted: "Agent interrupted", ended: "Session ended" }
+    ? { connecting: "Подключение…", unknown: "Игра готова · для статуса агента разрешите хуки Flappy", unlinked: "Игра готова · откройте Flappy в текущем чате для статуса агента", disconnected: "Нет связи со статусом агента", response: "Ответ готов", interrupted: "Агент остановлен", ended: "Сессия завершена", replaced: "Игра открыта в новой панели", closeFailed: "Игра открыта в новой панели · эту панель не удалось закрыть автоматически" }
+    : { connecting: "Connecting…", unknown: "Ready to play · trust Flappy hooks for agent status", unlinked: "Ready to play · open Flappy in this chat to link agent status", disconnected: "Agent status disconnected", response: "Response ready", interrupted: "Agent interrupted", ended: "Session ended", replaced: "Game opened in a new panel", closeFailed: "Game opened in a new panel · this panel could not close automatically" }
   const baseTranslate = Flappy.translate(navigator.language)
   const translate = (key) => key === "status.done"
     ? labels[status.state === "response-ended" ? "response" : status.state] ?? baseTranslate(key)
@@ -38,8 +40,13 @@
   }
 
   function update(result) {
+    if (closed || closing) return
     if (result?.isError) throw new Error("Status unavailable")
     const data = result?.structuredContent
+    if (panelId && data?.panel?.id === panelId && data.panel.active === false) {
+      void closeReplacedPanel()
+      return
+    }
     if (!data?.status) return
     sessionId = data.sessionId || sessionId
     status = data.status
@@ -47,6 +54,19 @@
     else if (["response-ended", "interrupted", "ended"].includes(status.state)) engine.setRunning(false)
     notice.textContent = labels[status.state] || ""
     engine.wake()
+  }
+
+  async function closeReplacedPanel() {
+    closing = true
+    engine.setRunning(false)
+    notice.textContent = labels.replaced
+    try {
+      await window.openai.requestClose()
+    } catch {
+      notice.textContent = labels.closeFailed
+    } finally {
+      dispose()
+    }
   }
 
   function resize(context) {
@@ -76,20 +96,21 @@
   })
 
   async function poll() {
-    if (closed) return
-    if (!document.hidden) {
-      try {
-        update(await request("tools/call", { name: "get_status", arguments: sessionId ? { session_id: sessionId } : {} }))
-      } catch {
+    if (closed || closing) return
+    try {
+      update(await request("tools/call", { name: "get_status", arguments: { ...(sessionId ? { session_id: sessionId } : {}), panel_id: panelId } }))
+    } catch {
+      if (!closed && !closing) {
         status = { state: "unknown" }
         notice.textContent = labels.disconnected
         engine.wake()
       }
     }
-    if (!closed) pollTimer = setTimeout(poll, 1000)
+    if (!closed && !closing) pollTimer = setTimeout(poll, 1000)
   }
 
   function dispose() {
+    if (closed) return
     closed = true
     clearTimeout(pollTimer)
     for (const item of pending.values()) {
@@ -102,12 +123,16 @@
 
   window.addEventListener("pagehide", dispose, { once: true })
   request("ui/initialize", {
-    appInfo: { name: "flappy-coding-break", version: "1.2.2" },
-    appCapabilities: {},
+    appInfo: { name: "flappy-coding-break", version: "1.3.0" },
+    appCapabilities: { availableDisplayModes: ["fullscreen"] },
     protocolVersion: "2026-01-26",
-  }).then((result) => {
+  }).then(async (result) => {
     notify("ui/notifications/initialized", {})
     resize(result?.hostContext)
-    poll()
-  }).catch(() => { notice.textContent = labels.disconnected })
+    const registration = await request("tools/call", { name: "claim_panel", arguments: sessionId ? { session_id: sessionId } : {} })
+    panelId = registration?.structuredContent?.panel?.id
+    if (!panelId) throw new Error("Panel registration failed")
+    update(registration)
+    if (!closed && !closing) pollTimer = setTimeout(poll, 1000)
+  }).catch(() => { if (!closed) notice.textContent = labels.disconnected })
 })()

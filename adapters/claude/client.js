@@ -9,7 +9,7 @@ function createRuntime(props, surface) {
   const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined, status: props.status }
   const publish = () => {
     const game = runtime.game
-    const data = { type: "state", phase: game.phase, animating: game.animating(), best: game.best, lastScore: game.lastScore }
+    const data = { type: "state", phase: game.phase, animating: game.animating(), score: game.score, best: game.best, lastScore: game.lastScore }
     const signature = JSON.stringify(data)
     if (signature !== runtime.lastState) {
       runtime.lastState = signature

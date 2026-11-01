@@ -46,7 +46,7 @@ async function connectApp(t, handle, sessionId, game) {
         return { jsonrpc: "2.0", id: message.id, result: { hostContext: { displayMode: "fullscreen" } } }
       }
       assert.equal(message.method, "tools/call")
-      assert.equal(message.params.name, "get_status")
+      assert.ok(["claim_panel", "get_status"].includes(message.params.name))
       const reply = await handle({ ...message, params: { ...message.params, _meta: { thread_id: sessionId } } })
       assert.equal(reply.error, undefined)
       lastStatus = reply.result.structuredContent.status
@@ -95,7 +95,7 @@ test("native hook processes recover a lost Stop and finish the embedded round on
     hook_event_name,
     cwd: path.join(directory, "nonexistent-project"),
     transcript_path: path.join(directory, "nonexistent-transcript.jsonl"),
-    permission_mode: "never",
+    permission_mode: "default",
     model: "test-model",
     ...(hook_event_name === "UserPromptSubmit"
       ? { prompt: "Synthetic integration test prompt" }

@@ -21,7 +21,7 @@ test("published OpenCode bundle loads using only the host's two allowed dependen
   assert.deepEqual(imports.sort(), ["@opencode/plugin/gui", "solid-js"])
 })
 
-function harness(options = {}) {
+function harness(options = {}, placement = "side") {
   const timers = new Map()
   const components = new Map()
   const cleanup = []
@@ -29,7 +29,10 @@ function harness(options = {}) {
   const engines = []
   const statuses = new Map()
   const panels = new Map()
-  let observer
+  const sessions = []
+  const observers = []
+  let owner = cleanup
+  const observer = () => observers.forEach(notify => notify())
   let current
   let id = 0
   const addSession = (name, state = "idle") => {
@@ -38,18 +41,19 @@ function harness(options = {}) {
       server: { data: { session: { status: name => statuses.get(name) } } },
     }
     statuses.set(name, state)
+    sessions.push(session)
     return session
   }
   const session = addSession("session-1")
   current = session
   const createEngine = () => {
     const engine = {
-      transitions: [], focused: 0, disposed: false,
+      transitions: [], focused: 0, disposed: false, viewsDisposed: 0,
       setRunning(value) { this.transitions.push(value) },
       wake() {},
       focus() { this.focused++ },
-      dispose() { this.disposed = true },
-      mount: status => ({ root: { engine, status }, dispose() {} }),
+      dispose() { this.lastTransitionAtDispose = this.transitions.at(-1); this.disposed = true },
+      mount: status => ({ root: { engine, status }, dispose() { engine.viewsDisposed++ } }),
     }
     engines.push(engine)
     return engine
@@ -61,19 +65,30 @@ function harness(options = {}) {
     require: (name) => {
       if (name === "@opencode/plugin/gui") return {
         Plugin: { define: value => value }, Panel: "Panel", Command: "Command", MenuItem: "MenuItem",
+        usePanel: () => ({ placement: () => placement }),
         createKeyed: (read, notify, options) => {
           let previous
-          observer = () => {
+          let nested = []
+          const update = () => {
             const next = read()
-            if (!next) { previous = undefined; return }
-            if (previous && options.equals(previous, next)) return
+            if (previous && next && options.equals(previous, next)) return
+            if (!previous && !next) return
+            nested.forEach(fn => fn())
+            nested = []
             previous = next
-            notify(next)
+            const savedOwner = owner
+            owner = nested
+            try {
+              if (next) notify(next)
+              else options.otherwise?.()
+            } finally { owner = savedOwner }
           }
-          observer()
+          observers.push(update)
+          cleanup.push(() => nested.forEach(fn => fn()))
+          update()
         },
       }
-      if (name === "solid-js") return { onCleanup: fn => cleanup.push(fn), untrack: fn => fn() }
+      if (name === "solid-js") return { onCleanup: fn => owner.push(fn), untrack: fn => fn(), createSignal: value => [() => value, next => { value = next }] }
       if (name.endsWith("canvas.cjs")) return { createEngine }
       if (name.endsWith("i18n.cjs")) return { messages: {} }
       throw new Error(`Unexpected dependency: ${name}`)
@@ -82,13 +97,17 @@ function harness(options = {}) {
   vm.runInNewContext(source, context)
   context.module.exports.setup({
     id: "flappy", t: key => key, options,
-    sessions: { current: () => current },
+    sessions: { current: () => current, list: () => sessions },
     add: (kind, value) => components.set(kind, value),
     layout: {
       state: (_, session) => panels.get(session.key) ?? "closed",
       open: (_, session) => { panels.set(session.key, "visible"); actions.push("open") },
-      close: (_, session) => { panels.set(session.key, "closed"); actions.push("close") },
-      toggle: (_, session) => { panels.set(session.key, panels.get(session.key) === "visible" ? "closed" : "visible") },
+      close: (_, session) => { panels.set(session.key, "closed"); actions.push("close"); components.get("Panel")?.close({ session }) },
+      toggle: (_, session) => {
+        const next = panels.get(session.key) === "visible" ? "closed" : "visible"
+        panels.set(session.key, next)
+        if (next === "closed") components.get("Panel")?.close({ session })
+      },
     },
   })
   return {
@@ -97,7 +116,11 @@ function harness(options = {}) {
     setRunning: value => { statuses.set(current.id, value ? "running" : "idle"); observer() },
     switchSession: session => { current = session; observer() },
     leaveSession: () => { current = undefined; observer() },
-    render: (session = current) => components.get("Panel").render({ session }),
+    render: (session = current) => { panels.set(session.key, "visible"); return components.get("Panel").render({ session })() },
+    mountPanel: () => components.get("Panel").render({ get session() { return current } }),
+    restorePanel: (session, state = "visible") => panels.set(session.key, state),
+    pendingCallbacks: () => [...timers.values()],
+    refresh: observer,
     panel: (session = current) => panels.get(session.key) ?? "closed",
     flush: () => { const callbacks = [...timers.values()]; timers.clear(); callbacks.forEach(fn => fn()) },
     cleanup: () => cleanup.forEach(fn => fn()),
@@ -203,5 +226,112 @@ test("manual OpenCode toggles cancel a pending automatic opening", () => {
   host.flush()
   assert.equal(host.panel(), "closed")
   assert.deepEqual(host.actions, [])
+  host.cleanup()
+})
+
+test("opening Flappy from the menu replaces the previous chat's game and persists before disposal", () => {
+  const host = harness()
+  host.setRunning(true)
+  host.flush()
+  const first = host.render().engine
+  const secondSession = host.addSession("session-2")
+  host.switchSession(secondSession)
+  host.components.get("MenuItem")().run()
+  assert.equal(host.panel(host.session), "closed")
+  assert.equal(host.panel(secondSession), "visible")
+  assert.equal(first.transitions.at(-1), false, "finish the old round so score and best are saved")
+  assert.equal(first.disposed, true)
+  assert.equal(first.lastTransitionAtDispose, false)
+  assert.deepEqual(host.actions, ["open", "close", "open"])
+  const count = host.engines.length
+  host.switchSession(host.session)
+  host.flush()
+  assert.equal(host.panel(host.session), "closed", "returning to the still-running old chat must not reopen it")
+  assert.equal(host.engines.length, count, "a replaced engine stays disposed until another opening")
+  host.components.get("Command")().run()
+  const reopened = host.render().engine
+  assert.notEqual(reopened, first)
+  assert.equal(host.panel(secondSession), "closed")
+  assert.equal(host.panel(host.session), "visible")
+  host.cleanup()
+})
+
+test("automatic openings close every older panel, including hidden panels without a mounted engine", () => {
+  const host = harness()
+  const first = host.render().engine
+  const hiddenSession = host.addSession("hidden-chat")
+  host.restorePanel(hiddenSession, "active")
+  const secondSession = host.addSession("session-2", "running")
+  host.switchSession(secondSession)
+  host.flush()
+  assert.equal(host.panel(host.session), "closed")
+  assert.equal(host.panel(hiddenSession), "closed")
+  assert.equal(host.panel(secondSession), "visible")
+  assert.equal(first.disposed, true)
+  assert.deepEqual(host.actions, ["close", "close", "open"])
+  host.setRunning(false)
+  host.flush()
+  assert.equal(host.panel(secondSession), "visible", "agent completion keeps the latest results panel")
+  host.cleanup()
+})
+
+test("an already-queued auto-open callback cannot resurrect a panel replaced by a manual opening", () => {
+  const host = harness()
+  host.setRunning(true)
+  const [staleOpen] = host.pendingCallbacks()
+  host.restorePanel(host.session)
+  const secondSession = host.addSession("session-2")
+  host.switchSession(secondSession)
+  host.components.get("Command")().run()
+  host.switchSession(host.session)
+  staleOpen()
+  host.flush()
+  assert.equal(host.panel(host.session), "closed")
+  assert.equal(host.panel(secondSession), "visible")
+  assert.deepEqual(host.actions, ["close"])
+  host.setRunning(false)
+  host.setRunning(true)
+  host.flush()
+  assert.equal(host.panel(host.session), "visible", "a new agent run may request a new opening")
+  assert.equal(host.panel(secondSession), "closed")
+  host.cleanup()
+})
+
+test("the host's reused panel mounts the current chat and direct panel openings replace old tabs", () => {
+  const host = harness({ autoOpen: false })
+  host.restorePanel(host.session)
+  const content = host.mountPanel()
+  const first = content().engine
+  const secondSession = host.addSession("session-2", "running")
+  host.switchSession(secondSession)
+  assert.equal(content(), undefined, "switching to a chat without Flappy does not open it")
+  assert.equal(host.panel(host.session), "visible")
+  assert.equal(first.disposed, false)
+  assert.equal(first.viewsDisposed, 1)
+  host.restorePanel(secondSession)
+  host.refresh()
+  const second = content().engine
+  assert.notEqual(second, first)
+  assert.equal(second.disposed, false)
+  assert.equal(first.disposed, true)
+  assert.equal(host.panel(host.session), "closed")
+  assert.equal(content().status(), "running")
+  host.setRunning(false)
+  assert.equal(content().status(), "done")
+  assert.equal(host.panel(secondSession), "visible")
+  host.cleanup()
+})
+
+test("mobile menu views remain playable without a stored side tab and replace the old game", () => {
+  const host = harness({ autoOpen: false }, "mobile")
+  const content = host.mountPanel()
+  const first = content().engine
+  assert.equal(host.panel(host.session), "closed")
+  const secondSession = host.addSession("session-2", "running")
+  host.switchSession(secondSession)
+  assert.notEqual(content().engine, first)
+  assert.equal(content().status(), "running")
+  assert.equal(first.disposed, true)
+  assert.equal(first.lastTransitionAtDispose, false)
   host.cleanup()
 })

@@ -4,7 +4,9 @@ const PANE = "flappy-coding-break"
 const CLIENT = "flappy-game"
 const BEST = "flappy.best"
 const LAST_SCORE = "flappy.lastScore"
+const OWNER = "flappy.pane.owner"
 const OPEN_DELAY = 1000
+const OWNER_CHECK_MS = 1000
 const phases = new Set(["ready", "playing", "paused", "over", "finished"])
 
 function report($, error) {
@@ -15,15 +17,87 @@ async function supported($) {
   return (await $.session.surfaces()).some((surface) => surface === "terminal" || surface === "desktop")
 }
 
+function stopWatching(state) {
+  state.ownerTimer?.cancel()
+  state.ownerTimer = undefined
+  state.ownerToken = undefined
+}
+
+async function saveResult($, state, score, best) {
+  if (best > state.best) state.best = best
+  const saved = await $.store.get(BEST)
+  if (Number.isSafeInteger(saved) && saved >= 0) state.best = Math.max(state.best, saved)
+  if (state.best > (Number.isSafeInteger(saved) ? saved : 0)) await $.store.set(BEST, state.best)
+  if (Number.isSafeInteger(score) && score >= 0 && score !== state.lastScore) {
+    state.lastScore = score
+    await $.store.set(LAST_SCORE, score)
+  }
+}
+
+async function checkOwner($, state, token) {
+  if (state.ownerToken !== token || state.checkingToken === token) return
+  state.checkingToken = token
+  try {
+    const owner = await $.store.get(OWNER)
+    if (state.ownerToken !== token || typeof owner !== "string") return
+    if (owner === token) {
+      const best = await $.store.get(BEST)
+      if (state.ownerToken !== token) return
+      if (Number.isSafeInteger(best) && best > state.best) {
+        state.best = best
+        $.ui.invalidate("ui.render")
+      }
+      return
+    }
+    // The Client reports each score change, so a suspended surface need not redraw to close.
+    const score = state.latestPhase === "ready" ? state.lastScore : state.latestScore
+    await saveResult($, state, score, Math.max(state.best, score ?? 0))
+    if (state.ownerToken !== token) return
+    await $.ui.close({ id: PANE })
+    if (state.ownerToken === token) stopWatching(state)
+  } finally {
+    if (state.checkingToken === token) state.checkingToken = undefined
+  }
+}
+
+function watchOwner($, state, token) {
+  stopWatching(state)
+  state.ownerToken = token
+  state.ownerTimer = $.clock.every(OWNER_CHECK_MS, () => {
+    void checkOwner($, state, token).catch((error) => report($, error))
+  })
+}
+
+async function openPane($, state, pane) {
+  const generation = state.generation
+  state.latestScore = undefined
+  state.latestPhase = undefined
+  await $.ui.open(pane)
+  const panes = await $.ui.panes()
+  if (state.generation !== generation || !panes.some((entry) => entry.id === PANE)) return
+  stopWatching(state)
+  const token = `${await $.session.id()}:${await $.clock.now()}:${Math.random().toString(36).slice(2)}`
+  if (state.generation !== generation) return
+  state.ownerToken = token
+  await $.store.set(OWNER, token)
+  if (state.ownerToken !== token) return
+  watchOwner($, state, token)
+}
+
 export function register(on, options = {}) {
   const t = translate(options.locale)
   const state = {
     activeTurn: undefined,
     openTimer: undefined,
     generation: 0,
+    best: 0,
+    lastScore: undefined,
+    latestScore: undefined,
+    latestPhase: undefined,
+    ownerTimer: undefined,
+    ownerToken: undefined,
+    checkingToken: undefined,
   }
-  let best = 0
-  let lastScore
   let finished = false
 
   const cancelOpen = () => {
@@ -32,9 +106,16 @@ export function register(on, options = {}) {
   }
   on("session.start", async ($, e, next) => {
     const saved = await $.store.get(BEST)
-    if (Number.isSafeInteger(saved) && saved >= 0) best = saved
+    if (Number.isSafeInteger(saved) && saved >= 0) state.best = saved
     const score = await $.store.get(LAST_SCORE)
-    if (Number.isSafeInteger(score) && score >= 0) lastScore = score
+    if (Number.isSafeInteger(score) && score >= 0) state.lastScore = score
+    if ((await $.ui.panes()).some((pane) => pane.id === PANE)) {
+      const owner = await $.store.get(OWNER)
+      const session = await $.session.id()
+      // A reload resumes the existing claim; it must not take ownership from a newer pane.
+      const token = typeof owner === "string" && owner.startsWith(`${session}:`) ? owner : `${session}:restored`
+      watchOwner($, state, token)
+    }
     await $.command.register({ name: "flappy", description: t("command.toggle"), immediate: true })
     return next(e)
   })
@@ -54,7 +135,7 @@ export function register(on, options = {}) {
           if (scheduled !== state.generation || state.activeTurn !== e.turnId || !(await supported($))) return
           const panes = await $.ui.panes()
           if (scheduled !== state.generation || state.activeTurn !== e.turnId || panes.some((pane) => pane.id === PANE)) return
-          await $.ui.open({ id: PANE, title: t("title"), rows: 29, columns: 44 })
+          await openPane($, state, { id: PANE, title: t("title"), rows: 29, columns: 44 })
         })().catch((error) => report($, error))
       })
     }
@@ -80,7 +161,7 @@ export function register(on, options = {}) {
     if ((await $.ui.panes()).some((pane) => pane.id === PANE)) {
       await $.ui.close({ id: PANE })
     } else {
-      await $.ui.open({ id: PANE, title: t("title"), focus: true, rows: 29, columns: 44 })
+      await openPane($, state, { id: PANE, title: t("title"), focus: true, rows: 29, columns: 44 })
     }
     return {}
   })
@@ -99,8 +180,8 @@ export function register(on, options = {}) {
       width: "100%",
       height: bodyRows,
       props: {
-        best,
-        lastScore: lastScore ?? null,
+        best: state.best,
+        lastScore: state.lastScore ?? null,
         locale: options.locale ?? "en",
         status: state.activeTurn ? "running" : finished ? "done" : "",
         focused: e.props.isFocused,
@@ -113,14 +194,12 @@ export function register(on, options = {}) {
     if (e.requestId !== PANE || e.element !== CLIENT || e.data?.type !== "state") return next(e)
     const data = e.data
     if (!phases.has(data.phase) || typeof data.animating !== "boolean" || !Number.isSafeInteger(data.best) || data.best < 0) return next(e)
-    if (data.best > best) {
-      best = data.best
-      await $.store.set(BEST, best)
+    if (Number.isSafeInteger(data.score) && data.score >= 0) {
+      state.latestScore = data.score
+      state.latestPhase = data.phase
     }
-    if ((data.phase === "over" || data.phase === "finished") && Number.isSafeInteger(data.lastScore) && data.lastScore >= 0 && data.lastScore !== lastScore) {
-      lastScore = data.lastScore
-      await $.store.set(LAST_SCORE, lastScore)
-    }
+    const final = data.phase === "over" || data.phase === "finished"
+    if (data.best > state.best || (final && data.lastScore !== state.lastScore)) await saveResult($, state, final ? data.lastScore : undefined, data.best)
     return next(e)
   })
 
@@ -128,6 +207,7 @@ export function register(on, options = {}) {
     if (e.id !== PANE) return next(e)
     state.generation++
     cancelOpen()
+    stopWatching(state)
     return next(e)
   })
 
@@ -136,6 +216,7 @@ export function register(on, options = {}) {
     state.activeTurn = undefined
     finished = false
     cancelOpen()
+    stopWatching(state)
     await $.ui.close({ id: PANE })
     return next(e)
   })

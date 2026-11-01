@@ -11,6 +11,8 @@ The host usually provides the current chat ID to the tool. If a Flappy hook supp
 
 The user can also open Flappy Bird from the chat's side-panel app picker. Live agent status requires trusting the plugin's hooks in Codex. A stopped response can be continued by another hook, so do not treat the game's status as proof that the user's task succeeded.
 
+Only the newest Flappy panel stays open in this Codex profile. When a new panel mounts, previous panels save their results and close themselves through the native UI API, including panels in other chats. The UI coordinates this itself; do not call extra tools to find or close old panels.
+
 The turn-start hook requests one automatic opening for each new turn. Follow that request early in the turn, even if the game was opened earlier in this chat, and pass `auto_opened: true`. Repeated copies of the same request do not need another call. If the user explicitly asks to keep the game closed, honor that preference.
 
 When the response ends, is interrupted, or the session closes, the game immediately ends the current round, including a paused round, and saves its score and best score. The panel stays open with those results. Another round is blocked until the agent starts running again. Automatic and manual openings follow the same game lifecycle. Opening is the only model call needed each turn; do not poll status or repeatedly reopen the panel during the same turn.
