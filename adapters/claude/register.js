@@ -1,5 +1,5 @@
 import { translate } from "./i18n.js"
-import { boardAspect } from "./field.js"
+import { boardAspect, desktopBoardRows } from "./field.js"
 import { drawBackdrop } from "./svg.js"
 
 const PANE = "flappy-coding-break"
@@ -100,6 +100,7 @@ export function register(on, options = {}) {
     ownerTimer: undefined,
     ownerToken: undefined,
     checkingToken: undefined,
+    columns: undefined,
   }
   let finished = false
 
@@ -203,12 +204,13 @@ export function register(on, options = {}) {
         surface: e.surface,
       },
     })
-    const rows = bodyRows - 4
-    if (e.surface !== "desktop" || rows <= 0) return client
-    const columns = Math.max(1, e.props.bodyColumns ?? e.viewport?.columns ?? 44)
+    const rows = desktopBoardRows(bodyRows)
+    if (e.surface !== "desktop" || rows === 0) return client
+    // The width the Client last laid out, so the scenery and the moving board share one aspect.
+    const columns = Math.max(1, state.columns ?? e.props.bodyColumns ?? e.viewport?.columns ?? 44)
     // The still scenery lies under the Client, which draws the text, the moving board and takes its clicks.
     return Box({ width: "100%", height: bodyRows, children: [
-      Box({ position: "absolute", top: 1, left: 0, width: "100%", height: rows, overflow: "hidden", children: [
+      Box({ position: "absolute", top: 0, left: 0, width: "100%", height: rows, overflow: "hidden", children: [
         Svg({ source: drawBackdrop(boardAspect(columns, rows)), alt: "Flappy Bird" }),
       ] }),
       Box({ position: "relative", width: "100%", height: bodyRows, children: [client] }),
@@ -219,6 +221,10 @@ export function register(on, options = {}) {
     if (e.requestId !== PANE || e.element !== CLIENT || e.data?.type !== "state") return next(e)
     const data = e.data
     if (!phases.has(data.phase) || typeof data.animating !== "boolean" || !Number.isSafeInteger(data.best) || data.best < 0) return next(e)
+    if (Number.isSafeInteger(data.columns) && data.columns > 0 && data.columns <= 1000 && data.columns !== state.columns) {
+      state.columns = data.columns
+      $.ui.invalidate("ui.render")
+    }
     if (Number.isSafeInteger(data.score) && data.score >= 0) {
       state.latestScore = data.score
       state.latestPhase = data.phase

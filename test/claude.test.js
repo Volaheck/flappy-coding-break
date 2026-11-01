@@ -448,8 +448,111 @@ test("Claude reopens a completed response with its persisted score and best", as
   assert.equal(client.surface.state.game.score, 8)
   assert.equal(client.surface.state.game.best, 12)
   assert.equal(client.surface.state.game.locked, true)
-  assert.ok(JSON.stringify(drawing).includes("Score: 8"))
+  const texts = textsOf(drawing)
+  for (const expected of ["Round complete", "8", "12", "Play again when the agent starts working", "Agent is done"]) assert.ok(texts.includes(expected), expected)
   assert.equal(client.timers.size, 0)
+})
+
+function textsOf(tree) {
+  return allElements(tree).filter((element) => element.type === "Text").map((element) => element.props.children.filter((child) => typeof child === "string").join("").trim())
+}
+
+function desktopClient(status = "running", bodyRows = 29, columns = 27) {
+  const client = createSurface()
+  client.surface.columns = columns
+  const props = { best: 5, locale: "en", focused: true, status, bodyRows, surface: "desktop" }
+  return { client, props, draw: () => FlappyClient(props, client.surface) }
+}
+
+test("Claude desktop shows the Canvas heads-up display for every phase and the agent's status", () => {
+  const { client, props, draw } = desktopClient()
+  let texts = textsOf(draw())
+  for (const expected of ["Flappy Bird", "Click to start", "Best: 5", "Agent is working…"]) assert.ok(texts.includes(expected), expected)
+  client.key("w")
+  client.surface.state.game.score = 3
+  const playing = draw()
+  const score = allElements(playing).find((element) => element.type === "Text" && element.props.size === "title")
+  assert.deepEqual(score.props.children, ["3"])
+  client.key("p")
+  texts = textsOf(draw())
+  assert.ok(texts.includes("Paused") && texts.includes("3"))
+  client.key("p")
+  const game = client.surface.state.game
+  game.score = 21
+  game.bird.y = 1000
+  client.frames(3)
+  assert.equal(game.phase, "over")
+  game.deadAt = game.time - 1
+  texts = textsOf(draw())
+  for (const expected of ["Game Over", "Score", "21", "Best", "🥈", "Click or Space to play again"]) assert.ok(texts.includes(expected), expected)
+  props.status = "done"
+  texts = textsOf(draw())
+  for (const expected of ["Round complete", "Play again when the agent starts working", "Agent is done"]) assert.ok(texts.includes(expected), expected)
+})
+
+test("Claude desktop board layers are placed by explicit cells and leave the controls row in the flow", () => {
+  for (const bodyRows of [9, 12, 29, 31]) {
+    const { client, draw } = desktopClient("running", bodyRows)
+    draw()
+    client.key("w")
+    client.frames(30)
+    const tree = draw()
+    const rows = bodyRows - 1
+    const flow = tree.props.children.filter((child) => child.props.position !== "absolute")
+    assert.equal(flow[0].props.height, rows)
+    assert.equal(flow.length, 2)
+    const overlays = tree.props.children.filter((child) => child.props.position === "absolute")
+    assert.ok(overlays.length >= 4)
+    for (const overlay of overlays) {
+      assert.ok(Number.isInteger(overlay.props.top) && overlay.props.top >= 0 && overlay.props.top < rows)
+      if (overlay.props.height !== undefined) assert.equal(overlay.props.height, rows)
+    }
+  }
+  const { draw } = desktopClient("running", 8)
+  assert.ok(allElements(draw()).every((element) => element.props.position !== "absolute"))
+})
+
+test("Claude desktop board stays well inside the Client tree bounds in its busiest frames", () => {
+  for (const columns of [20, 27, 48, 120]) {
+    const { client, draw } = desktopClient("running", 31, columns)
+    draw()
+    const game = client.surface.state.game
+    game.press()
+    game.scroll = 300
+    game.pipes.length = 0
+    game.pipes.push({ x: 384, gap: 230 }, { x: 560, gap: 170 }, { x: 736, gap: 300 })
+    for (const angle of [-0.42, 0.4, 1.2, Math.PI / 2]) {
+      game.bird.angle = angle
+      game.bird.y = 236
+      const tree = draw()
+      const size = JSON.stringify(tree).length
+      assert.ok(size < 80000, `${size} characters at ${columns} columns`)
+      assert.ok(allElements(tree).length < 1500)
+    }
+  }
+})
+
+test("Claude desktop bird has smoothed edges finished against what lies behind it", () => {
+  const { client, draw } = desktopClient()
+  draw()
+  const game = client.surface.state.game
+  game.bird.y = 200
+  const plain = new Set(["#f8c63f", "#fbe28f", "#e6a12a", "#3b2a20", "#ffffff", "#1b1b1b", "#f6662b", "#df4a16", "#fff6dc"])
+  const bird = draw().props.children.filter((child) => child.props.position === "absolute")[2]
+  const colors = allElements(bird).map((element) => element.props.backgroundColor).filter(Boolean)
+  assert.ok(colors.some((color) => plain.has(color)))
+  assert.ok(colors.filter((color) => !plain.has(color)).length > 20)
+})
+
+test("Claude desktop scenery takes the width the Client last laid out", async () => {
+  const host = createHost()
+  const render = () => host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, bodyColumns: 44, scroll: { bodyRows: 29 } } })
+  const scenery = (tree) => allElements(tree).find((element) => element.type === "Svg").props.source
+  const wide = scenery(await render())
+  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "ready", animating: true, best: 0, score: 0, columns: 27 } })
+  const narrow = scenery(await render())
+  assert.notEqual(narrow, wide)
+  assert.ok(Number(narrow.match(/height="(\d+)"/)[1]) > Number(wide.match(/height="(\d+)"/)[1]))
 })
 
 function clientOf(tree) {

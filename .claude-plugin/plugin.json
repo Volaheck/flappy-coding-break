@@ -1,6 +1,6 @@
 {
   "name": "flappy-coding-break",
-  "version": "1.3.3",
+  "version": "1.4.0",
   "description": "A native Flappy Bird pane while Claude Code works, with no model calls during play.",
   "author": { "name": "Volaheck" },
   "repository": "https://github.com/Volaheck/flappy-coding-break",

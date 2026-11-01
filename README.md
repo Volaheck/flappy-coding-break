@@ -7,7 +7,7 @@ Play Flappy Bird while your coding agent works. One repository, one shared game,
 | Harness | Game surface | Controls |
 | --- | --- | --- |
 | OpenCode Desktop 2.2+ | Native side panel, original Canvas graphics | Click, Space, ↑, W, Enter; P to pause |
-| Claude Code Terminal / Desktop | Native Mods pane: SVG scenery with a smooth board on Desktop, pixel renderer in the terminal | Click, W or Space when focused; P to pause |
+| Claude Code Terminal / Desktop | Native Mods pane: Canvas-style scene and heads-up display on Desktop, pixel renderer in the terminal | Click, W or Space when focused; P to pause |
 | Codex Desktop with MCP Apps UI | Embedded app in the chat side panel, Canvas graphics | Click, Space, ↑, W, Enter; P to pause |
 
 The game never opens an external browser or window. The Codex CLI and Claude Code VS Code extension do not provide the game surface used here.
@@ -103,7 +103,7 @@ Configure automatic opening in the global OpenCode config:
 
 Run `/flappy` to toggle the native pane, including while Claude is working. The mod opens automatically on a main-agent turn. Main-agent completion ends the round and shows the saved score and best; subagent completions do not end it.
 
-The renderer uses the Mods Client API and does not require a browser. It shares the Canvas version's physics, draws SVG scenery under a smoothly moving board on Desktop and pixel graphics in the terminal. Configure `autoOpen` and `locale` (`en` / `ru`) through the plugin's configuration.
+The renderer uses the Mods Client API and does not require a browser. It shares the Canvas version's physics, draws the Canvas art and heads-up display on Desktop (SVG scenery under a smoothly moving board) and pixel graphics in the terminal. Configure `autoOpen` and `locale` (`en` / `ru`) through the plugin's configuration.
 
 Terminal pane auto-opening depends on the terminal width: normally at least 144 columns, or 110 after manually opening a pane. Use `/flappy` to open it in a smaller terminal. Arrow keys belong to the host; use W, Space, or the pointer. The VS Code extension does not support the Client element used by this game.
 

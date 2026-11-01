@@ -1,16 +1,19 @@
 import { createGame, constants } from "./core.js"
 import { translate } from "./i18n.js"
 import { drawBoard } from "./pixels.js"
-import { drawScene } from "./scene.js"
+import { warmBird } from "./bird.js"
+import { boardAspect, desktopBoardRows, fieldLayout } from "./field.js"
+import { drawHud, drawScene } from "./scene.js"
 
 const FRAME_MS = 1000 / 30
 const flapKeys = new Set([" ", "w", "W", "up", "return", "enter"])
 
 function createRuntime(props, surface) {
-  const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined, status: props.status }
+  const runtime = { game: undefined, props, stop: undefined, lastState: "", focused: props.focused, board: undefined, status: props.status, columns: undefined }
   const publish = () => {
     const game = runtime.game
     const data = { type: "state", phase: game.phase, animating: game.animating(), score: game.score, best: game.best, lastScore: game.lastScore }
+    if (runtime.columns !== undefined) data.columns = runtime.columns
     const signature = JSON.stringify(data)
     if (signature !== runtime.lastState) {
       runtime.lastState = signature
@@ -64,6 +67,7 @@ function createRuntime(props, surface) {
     if (board && x >= 0 && x < board.columns && y >= board.top && y < board.bottom) runtime.press()
   })
   runtime.wake = wake
+  runtime.publish = publish
   wake()
   return runtime
 }
@@ -90,21 +94,43 @@ export default function FlappyClient(props, surface) {
   const desktop = props.surface === "desktop"
   const columns = Math.max(1, desktop ? surface.columns || 40 : Math.min(48, surface.columns || 40))
   const bodyRows = Math.max(0, Math.min(31, Math.floor(props.bodyRows ?? 29)))
-  const rows = Math.max(0, bodyRows - 4)
-  runtime.board = { columns, top: 1, bottom: 1 + rows }
   const status = props.status ? t(`status.${props.status}`) : t("title")
   const help = game.phase === "finished" ? t(game.locked ? "waiting" : "restart") : props.locale === "ru" ? "Клик / W — взмах · P — пауза" : "Click / W — flap · P — pause"
   const message = game.phase === "finished" ? `${t("finished")} · ${t("score")}: ${game.score}` : game.phase === "paused" ? t("paused") : game.phase === "over" ? t("over") : game.phase === "ready" ? t("start") : `${t("score")}: ${game.score}`
+  const buttons = [
+    Button({ key: "flap", label: "W", plain: true, onPress: runtime.press }),
+    Button({ key: "pause", label: "P", plain: true, onPress: runtime.pause }),
+  ]
   const chrome = [
     Text({ wrap: "truncate", color: props.status === "running" ? "#ffd166" : "#7ee787", children: [status] }),
     Text({ wrap: "truncate", children: [`${message}  ·  ${t("best")}: ${game.best}`] }),
     Text({ wrap: "truncate", dimColor: true, children: [help] }),
-    game.locked ? Text({ children: [" "] }) : Box({ flexDirection: "row", columnGap: 1, children: [
-      Button({ key: "flap", label: "W", plain: true, onPress: runtime.press }),
-      Button({ key: "pause", label: "P", plain: true, onPress: runtime.pause }),
-    ] }),
+    game.locked ? Text({ children: [" "] }) : Box({ flexDirection: "row", columnGap: 1, children: buttons }),
   ]
-  return Box({ flexDirection: "column", children: bodyRows < 4
+  const rows = desktop ? desktopBoardRows(bodyRows) : Math.max(0, bodyRows - 4)
+  if (desktop && runtime.columns !== columns) {
+    runtime.columns = columns
+    runtime.publish()
+  }
+  if (desktop && rows > 0) {
+    runtime.board = { columns, top: 0, bottom: rows }
+    warmBird()
+    const view = { ...fieldLayout(boardAspect(columns, rows)), rows }
+    const controls = game.locked
+      ? Text({ wrap: "truncate", dimColor: true, children: [t("waiting")] })
+      : Box({ flexDirection: "row", columnGap: 1, alignItems: "center", children: [...buttons, Text({ wrap: "truncate", dimColor: true, children: [help] })] })
+    return Box({
+      flexDirection: "column", width: "100%", height: bodyRows,
+      children: [
+        Box({ height: rows, flexShrink: 0 }),
+        controls,
+        ...drawScene(game, view, surface.elements),
+        ...drawHud(game, view, rows, props.status, t, surface.elements),
+      ],
+    })
+  }
+  runtime.board = { columns, top: 1, bottom: 1 + rows }
+  return Box({ flexDirection: "column", children: bodyRows < 4 || desktop
     ? chrome.slice(0, bodyRows)
-    : [chrome[0], ...(desktop ? [drawScene(game, columns, rows, surface.elements)] : drawBoard(game, columns, rows, surface.elements)), ...chrome.slice(1)] })
+    : [chrome[0], ...drawBoard(game, columns, rows, surface.elements), ...chrome.slice(1)] })
 }

@@ -123,7 +123,7 @@
 
   window.addEventListener("pagehide", dispose, { once: true })
   request("ui/initialize", {
-    appInfo: { name: "flappy-coding-break", version: "1.3.3" },
+    appInfo: { name: "flappy-coding-break", version: "1.4.0" },
     appCapabilities: { availableDisplayModes: ["fullscreen"] },
     protocolVersion: "2026-01-26",
   }).then(async (result) => {

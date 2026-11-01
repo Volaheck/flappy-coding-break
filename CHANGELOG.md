@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.0
+
+- Draw the Claude Desktop game like the Canvas version: a smooth, tilting bird rasterised with anti-aliased edges, gradient pipes and slanted grass over the still SVG scenery.
+- Bring the Canvas heads-up display into the Claude Desktop field: the score while playing, the agent's status, the start and pause screens, and Game Over or Round complete with score, best, medal, the NEW badge and the restart or waiting hint.
+- Place every Claude Desktop layer by explicit cells, so the board can no longer cover the controls row, and size the scenery from the width the game last laid out.
+
 ## 1.3.3
 
 - Keep Claude Desktop play smooth: the pane draws only the still scenery as SVG, once, and the game module draws the pipes, ground and bird locally at sub-cell precision, so no frame waits on a round trip through the plugin.

@@ -85,7 +85,7 @@ test('completed live and paused games stay locked until the next main turn on bo
       expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeDefined()
       await ui.key({ key: 'w' })
       expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeUndefined()
-      expect(await ui.find({ type: 'Text', text: /Score: 0/, in: 'flappy-game' })).toBeDefined()
+      expect(await ui.find({ type: 'Text', text: surface === 'desktop' ? /^0$/ : /Score: 0/, in: 'flappy-game' })).toBeDefined()
       await ui.unmount()
     }
   }
@@ -110,14 +110,17 @@ test('stored results survive a native remount and subagent completion does not f
   await $.turn.complete({ turnId: 'child', agentId: 'subagent', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
   expect(await ui.find({ type: 'Text', text: /Round complete/, in: 'flappy-game' })).toBeUndefined()
   await $.turn.complete({ turnId: 'main', answer: '', durationMs: 1, isAborted: true, reason: 'aborted' })
-  expect(await ui.find({ type: 'Text', text: /Score: 8.*Best: 12/, in: 'flappy-game' })).toBeDefined()
+  const scoreboard = async (drawing: typeof ui) => {
+    for (const text of [/^Round complete$/, /^8$/, /^12$/]) expect(await drawing.find({ type: 'Text', text, in: 'flappy-game' })).toBeDefined()
+  }
+  await scoreboard(ui)
   await ui.unmount()
   const reopened = await $.ui.mount({
     plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
     viewport: { columns: 100, rows: 40 },
     props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 44, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
   })
-  expect(await reopened.find({ type: 'Text', text: /Score: 8.*Best: 12/, in: 'flappy-game' })).toBeDefined()
+  await scoreboard(reopened)
   expect(await reopened.find({ type: 'Button', in: 'flappy-game' })).toBeUndefined()
   await reopened.unmount()
 })
@@ -172,17 +175,35 @@ test('the flappy skill opens the native pane and replaces the Codex instructions
   expect(opened.length).toBe(1)
 })
 
-test('desktop draws the still Svg scenery under the moving Client board', async ($, on) => {
+test('desktop plays a whole round on the moving board over still Svg scenery, with the agent status in the field', async ($, on) => {
+  mock.clock(on)
   on('ui.log', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('turn.start', ($, e) => ({ turnId: e.turnId }))
+  on('turn.complete', () => ({ text: '' }))
+  await $.turn.start({ turnId: 'desktop-round', text: 'work' })
   const ui = await $.ui.mount({
     plugin: 'flappy-coding-break', component: 'Pane', requestId: 'flappy-coding-break', surface: 'desktop',
     viewport: { columns: 60, rows: 40 },
     props: { title: 'Flappy Bird', isFocused: true, bodyColumns: 27, placement: 'inline', scroll: { offset: 0, bodyRows: 29 }, view: {} }
   })
+  await ui.resize({ columns: 27, rows: 29, in: 'flappy-game' })
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
-  expect(await ui.find({ type: 'Client' })).toBeDefined()
+  const text = (pattern: RegExp) => ui.find({ type: 'Text', text: pattern, in: 'flappy-game' })
+  expect(await text(/^Flappy Bird$/)).toBeDefined()
+  expect(await text(/^Click to start$/)).toBeDefined()
+  expect(await text(/^Agent is working…$/)).toBeDefined()
   const board = JSON.stringify(await ui.drawn({ in: 'flappy-game' }))
   expect(board.includes('backgroundColor')).toBe(true)
-  expect(board.includes('position')).toBe(true)
+  await ui.pointer({ type: 'down', x: 10, y: 10, button: 'left' })
+  await ui.advance(200)
+  expect(await text(/^0$/)).toBeDefined()
+  await ui.advance(4000)
+  expect(await text(/^Game Over$/)).toBeDefined()
+  expect(await text(/^Click or Space to play again$/)).toBeDefined()
+  await $.turn.complete({ turnId: 'desktop-round', answer: 'done', durationMs: 1, isAborted: false, reason: 'answer' })
+  expect(await text(/^Round complete$/)).toBeDefined()
+  expect(await text(/^Agent is done$/)).toBeDefined()
+  expect(await ui.find({ type: 'Button', in: 'flappy-game' })).toBeUndefined()
   await ui.unmount()
 })
