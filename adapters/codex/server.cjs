@@ -12,7 +12,7 @@ const MIME_TYPE = "text/html;profile=mcp-app"
 const MAX_MESSAGE = 4 * 1024 * 1024
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false }
 const inputSchema = { type: "object", properties: { session_id: { type: "string", minLength: 1, maxLength: 256 } }, additionalProperties: false }
-const openSchema = { ...inputSchema, properties: { ...inputSchema.properties, auto_opened: { type: "boolean", description: "True only for the automatic opening requested by the Flappy startup hook." } } }
+const openSchema = { ...inputSchema, properties: { ...inputSchema.properties, auto_opened: { type: "boolean", description: "True only for the automatic opening requested by the Flappy turn-start hook." } } }
 const tools = [
   {
     name: "open_flappy",

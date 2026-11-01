@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.1
+
+- Request the Codex game panel at the start of every new agent turn instead of only once per chat.
+- Deduplicate concurrent hook retries per turn and ignore legacy chat-level opening markers.
+
 ## 1.2.0
 
 - End the current round as soon as the agent finishes its response, including live and paused rounds.

@@ -4,6 +4,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
+import { createHash } from "node:crypto"
 import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 import vm from "node:vm"
@@ -70,16 +71,51 @@ test("subagent lifecycle cannot stop or auto-open the parent game", (t) => {
   assert.equal(readStatus("child", directory).state, "unknown")
 })
 
-test("hook requests opening once and stores no prompts, transcripts, or paths", (t) => {
+test("hook requests opening once per turn and stores no prompts, transcripts, or paths", (t) => {
   const directory = stateDirectory(t)
   const sensitive = { prompt: "private prompt", transcript_path: "/private/transcript", cwd: "/private/project", last_assistant_message: "private response" }
   const first = handleHook(event("UserPromptSubmit", "../../escape", "turn", sensitive), directory)
   assert.equal(first.hookSpecificOutput.hookEventName, "UserPromptSubmit")
-  assert.equal(handleHook(event("UserPromptSubmit", "../../escape", "another-turn", sensitive), directory), null)
+  assert.equal(handleHook(event("UserPromptSubmit", "../../escape", "turn", sensitive), directory), null)
+  assert.ok(handleHook(event("UserPromptSubmit", "../../escape", "another-turn", sensitive), directory))
+  assert.ok(handleHook(event("UserPromptSubmit", "other-chat", "turn", sensitive), directory))
   const readTree = (folder) => fs.readdirSync(folder, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? readTree(path.join(folder, entry.name)) : fs.readFileSync(path.join(folder, entry.name), "utf8"))
   const stored = readTree(directory).join("\n")
   for (const value of Object.values(sensitive)) assert.equal(stored.includes(value), false)
   assert.equal(stored.includes("../../escape"), false)
+})
+
+test("legacy chat-level markers do not suppress new turn openings", (t) => {
+  const directory = stateDirectory(t)
+  const session = path.join(directory, "sessions", createHash("sha256").update("chat-a").digest("hex"))
+  fs.mkdirSync(session, { recursive: true })
+  fs.writeFileSync(path.join(session, "open-requested"), "1")
+  assert.ok(handleHook(event("UserPromptSubmit"), directory))
+  assert.equal(handleHook(event("UserPromptSubmit"), directory), null)
+  assert.ok(handleHook(event("UserPromptSubmit", "chat-a", "turn-b"), directory))
+  assert.equal(readStatus("chat-a", directory).activeTurns, 2)
+})
+
+test("parallel hook retries request one opening per turn without clearing overlapping work", async (t) => {
+  const directory = stateDirectory(t)
+  const invoke = (turn) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(root, "adapters/codex/hook.cjs")], { env: { ...process.env, FLAPPY_CODEX_DATA: directory }, stdio: ["pipe", "pipe", "pipe"] })
+    let stdout = ""
+    let stderr = ""
+    child.stdout.setEncoding("utf8").on("data", (chunk) => { stdout += chunk })
+    child.stderr.setEncoding("utf8").on("data", (chunk) => { stderr += chunk })
+    child.once("error", reject)
+    child.once("exit", (code) => code === 0 && !stderr ? resolve(stdout.trim()) : reject(new Error(stderr || `Hook exited with ${code}`)))
+    child.stdin.end(JSON.stringify(event("UserPromptSubmit", "chat-a", turn)))
+  })
+  for (const turn of ["turn-a", "turn-b"]) {
+    const replies = await Promise.all(Array.from({ length: 8 }, () => invoke(turn)))
+    assert.equal(replies.filter(Boolean).length, 1)
+    assert.equal(JSON.parse(replies.find(Boolean)).hookSpecificOutput.hookEventName, "UserPromptSubmit")
+  }
+  assert.equal(readStatus("chat-a", directory).activeTurns, 2)
+  applyEvent(event("Stop"), directory)
+  assert.equal(readStatus("chat-a", directory).activeTurns, 1)
 })
 
 test("MCP exposes a native thread entrypoint and keeps status app-only", async (t) => {

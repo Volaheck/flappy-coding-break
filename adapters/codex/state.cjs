@@ -57,11 +57,12 @@ function applyEvent(event, directory = dataDirectory(), now = Date.now()) {
   const turnId = identifier(event.turn_id)
   if (!state || !turnId) return null
   writeJson(path.join(session, "turns", `${key(turnId)}.json`), { state, updatedAt: now })
-  return { sessionId, event: name }
+  return { sessionId, turnId, event: name }
 }
 
-function claimOpenRequest(sessionId, directory = dataDirectory()) {
-  const file = path.join(directory, "sessions", key(sessionId), "open-requested")
+function claimOpenRequest(sessionId, turnId, directory = dataDirectory()) {
+  if (!identifier(sessionId) || !identifier(turnId)) return false
+  const file = path.join(directory, "sessions", key(sessionId), "turns", `${key(turnId)}.open-requested`)
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   try {
     fs.writeFileSync(file, "1", { flag: "wx", mode: 0o600 })

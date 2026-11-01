@@ -109,9 +109,9 @@ Terminal pane auto-opening depends on the terminal width: normally at least 144 
 
 Ask **“Open Flappy Bird”**, invoke the `flappy` skill, or use the **Flappy Bird** app entry in the chat side panel. The plugin's `open_flappy` tool returns the embedded game. Continue your task with the game visible alongside the chat.
 
-Trusted lifecycle hooks request the initial opening once per chat. This initial opening is a model tool call; subsequent gameplay and status polling do not call the model. The game reads only the current chat's status through an app-only MCP tool. It makes no external network requests.
+Trusted lifecycle hooks request opening at the start of each new agent turn, including when the game was opened earlier in the same chat. Opening uses one model tool call per turn; subsequent gameplay and status polling do not call the model. The game reads only the current chat's status through an app-only MCP tool. It makes no external network requests.
 
-Response completion, interruption, and session end all finish the round and lock play while keeping the results visible. A new active response unlocks the next round. Losing the status connection does not unlock a finished game. Automatic opening is requested once per chat; after manually closing, reopen it with the skill or side-panel picker. “Response ready” does not guarantee that the entire task is complete: another hook can continue the turn.
+Response completion, interruption, and session end all finish the round and lock play while keeping the results visible. A new active response unlocks the next round. Losing the status connection does not unlock a finished game. After manually closing the panel, reopen it with the skill or side-panel picker, or let the next turn request opening again. “Response ready” does not guarantee that the entire task is complete: another hook can continue the turn.
 
 Hooks require supported local Codex execution. Without trusted hooks, the game is still playable but cannot show live agent status. This integration requires a desktop version with MCP Apps UI; installing it in the CLI alone does not add a graphical pane.
 

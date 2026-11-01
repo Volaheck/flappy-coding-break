@@ -102,7 +102,7 @@
 
   window.addEventListener("pagehide", dispose, { once: true })
   request("ui/initialize", {
-    appInfo: { name: "flappy-coding-break", version: "1.2.0" },
+    appInfo: { name: "flappy-coding-break", version: "1.2.1" },
     appCapabilities: {},
     protocolVersion: "2026-01-26",
   }).then((result) => {
