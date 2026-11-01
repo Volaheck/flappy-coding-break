@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.2.2
+
+- Track Codex's current turn instead of accumulating unfinished turns from earlier responses.
+- Recover from a missed stop signal when a new turn starts, while ignoring late stop signals from older turns.
+- Keep chats and subagents isolated without letting stale status prevent the round from ending.
+
 ## 1.2.1
 
 - Request the Codex game panel at the start of every new agent turn instead of only once per chat.

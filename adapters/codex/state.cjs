@@ -36,6 +36,13 @@ function writeJson(file, value) {
   fs.renameSync(temporary, file)
 }
 
+function startTime(turn) {
+  if (!turn) return null
+  if (Number.isFinite(turn.startedAt)) return turn.startedAt
+  // Old versions stored only updatedAt. Freeze that estimate on the next event.
+  return !("startedAt" in turn) && Number.isFinite(turn.updatedAt) ? turn.updatedAt : null
+}
+
 function applyEvent(event, directory = dataDirectory(), now = Date.now()) {
   const sessionId = identifier(event?.session_id)
   if (!sessionId) return null
@@ -56,7 +63,14 @@ function applyEvent(event, directory = dataDirectory(), now = Date.now()) {
   const state = turnEvents[name]
   const turnId = identifier(event.turn_id)
   if (!state || !turnId) return null
-  writeJson(path.join(session, "turns", `${key(turnId)}.json`), { state, updatedAt: now })
+  const file = path.join(session, "turns", `${key(turnId)}.json`)
+  const previous = readJson(file)
+  let startedAt = startTime(previous)
+  if (name === "UserPromptSubmit") {
+    const lifecycle = readJson(path.join(session, "lifecycle.json"))
+    if (startedAt === null || startedAt < (lifecycle?.resetAt ?? 0)) startedAt = now
+  }
+  writeJson(file, { state, updatedAt: now, startedAt })
   return { sessionId, turnId, event: name }
 }
 
@@ -85,13 +99,21 @@ function readStatus(sessionId, directory = dataDirectory(), now = Date.now()) {
     files = []
   }
   const turns = files.filter((file) => file.endsWith(".json")).map((file) => readJson(path.join(session, "turns", file)))
-    .filter((turn) => turn && Number.isFinite(turn.updatedAt) && turn.updatedAt >= (lifecycle?.resetAt ?? 0) && now - turn.updatedAt < MAX_AGE)
-  const latest = turns.sort((a, b) => b.updatedAt - a.updatedAt)[0]
-  if (lifecycle?.event === "SessionEnd" && lifecycle.updatedAt >= (latest?.updatedAt ?? 0)) {
+    .filter((turn) => turn && Number.isFinite(turn.updatedAt) && (startTime(turn) ?? turn.updatedAt) >= (lifecycle?.resetAt ?? 0) && now - turn.updatedAt < MAX_AGE)
+  // Codex has one active main turn per chat. A newer start supersedes an old
+  // running record even when its Stop was missed during a plugin upgrade.
+  const latest = turns.sort((a, b) => {
+    const aStart = startTime(a)
+    const bStart = startTime(b)
+    if (aStart === null && bStart === null) return b.updatedAt - a.updatedAt
+    if (aStart === null) return 1
+    if (bStart === null) return -1
+    return bStart - aStart
+  })[0]
+  if (lifecycle?.event === "SessionEnd" && lifecycle.updatedAt >= (startTime(latest) ?? latest?.updatedAt ?? 0)) {
     return { state: "ended", activeTurns: 0, updatedAt: lifecycle.updatedAt }
   }
-  const activeTurns = turns.filter((turn) => turn.state === "running").length
-  return { state: activeTurns ? "running" : latest?.state ?? "unknown", activeTurns, updatedAt: latest?.updatedAt ?? lifecycle?.updatedAt ?? null }
+  return { state: latest?.state ?? "unknown", activeTurns: latest?.state === "running" ? 1 : 0, updatedAt: latest?.updatedAt ?? lifecycle?.updatedAt ?? null }
 }
 
 module.exports = { dataDirectory, identifier, applyEvent, claimOpenRequest, readStatus }

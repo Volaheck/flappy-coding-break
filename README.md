@@ -113,6 +113,8 @@ Trusted lifecycle hooks request opening at the start of each new agent turn, inc
 
 Response completion, interruption, and session end all finish the round and lock play while keeping the results visible. A new active response unlocks the next round. Losing the status connection does not unlock a finished game. After manually closing the panel, reopen it with the skill or side-panel picker, or let the next turn request opening again. “Response ready” does not guarantee that the entire task is complete: another hook can continue the turn.
 
+Status follows the current turn in this chat. Starting a new turn supersedes stale records left by a missed stop signal; a delayed stop from an older turn cannot stop the new one. Hooks must remain enabled and trusted for completion to reach the game.
+
 Hooks require supported local Codex execution. Without trusted hooks, the game is still playable but cannot show live agent status. This integration requires a desktop version with MCP Apps UI; installing it in the CLI alone does not add a graphical pane.
 
 ## Development

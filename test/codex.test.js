@@ -24,7 +24,7 @@ function stateDirectory(t) {
 const event = (hook_event_name, session_id = "chat-a", turn_id = "turn-a", extra = {}) => ({ hook_event_name, session_id, turn_id, ...extra })
 const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } } }
 
-test("agent status stays isolated across chats and overlapping turns", (t) => {
+test("new main turns supersede previous work and stay isolated across chats", (t) => {
   const directory = stateDirectory(t)
   applyEvent(event("UserPromptSubmit"), directory, 100)
   applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 110)
@@ -32,10 +32,61 @@ test("agent status stays isolated across chats and overlapping turns", (t) => {
   applyEvent(event("Stop"), directory, 130)
   assert.equal(readStatus("chat-a", directory, 140).state, "running")
   assert.equal(readStatus("chat-a", directory, 140).activeTurns, 1)
+  assert.equal(readStatus("chat-a", directory, 140).updatedAt, 110)
   applyEvent(event("Interrupt", "chat-a", "turn-b"), directory, 150)
   assert.equal(readStatus("chat-a", directory, 160).state, "interrupted")
   assert.equal(readStatus("chat-b", directory, 160).state, "running")
   assert.equal(readStatus(null, directory, 160).state, "unlinked")
+})
+
+test("a missed Stop cannot keep the game running after the next turn ends", (t) => {
+  const directory = stateDirectory(t)
+  applyEvent(event("UserPromptSubmit"), directory, 100)
+  applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 200)
+  assert.equal(readStatus("chat-a", directory, 210).activeTurns, 1)
+  applyEvent(event("Stop", "chat-a", "turn-b"), directory, 300)
+  assert.deepEqual(readStatus("chat-a", directory, 310), { state: "response-ended", activeTurns: 0, updatedAt: 300 })
+  applyEvent(event("UserPromptSubmit"), directory, 400)
+  assert.equal(readStatus("chat-a", directory, 410).state, "response-ended", "a retry from the superseded turn cannot become current again")
+})
+
+test("same-turn continuation resumes without changing its original start", (t) => {
+  const directory = stateDirectory(t)
+  applyEvent(event("UserPromptSubmit"), directory, 100)
+  applyEvent(event("Stop"), directory, 200)
+  applyEvent(event("UserPromptSubmit"), directory, 300)
+  assert.equal(readStatus("chat-a", directory, 310).state, "running")
+  applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 350)
+  applyEvent(event("UserPromptSubmit"), directory, 400)
+  assert.equal(readStatus("chat-a", directory, 410).updatedAt, 350)
+})
+
+test("a terminal event without its start cannot supersede a known active turn", (t) => {
+  const directory = stateDirectory(t)
+  applyEvent(event("UserPromptSubmit"), directory, 100)
+  applyEvent(event("Stop", "chat-a", "turn-b"), directory, 200)
+  assert.equal(readStatus("chat-a", directory, 210).state, "running")
+  assert.equal(readStatus("chat-a", directory, 210).updatedAt, 100)
+  applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 300)
+  assert.equal(readStatus("chat-a", directory, 310).updatedAt, 300)
+  applyEvent(event("Stop", "chat-a", "turn-b"), directory, 400)
+  assert.equal(readStatus("chat-a", directory, 410).state, "response-ended")
+})
+
+test("a new turn supersedes legacy running records and late stops preserve their start estimate", (t) => {
+  const directory = stateDirectory(t)
+  const hash = (value) => createHash("sha256").update(value).digest("hex")
+  const turns = path.join(directory, "sessions", hash("chat-a"), "turns")
+  fs.mkdirSync(turns, { recursive: true })
+  fs.writeFileSync(path.join(turns, `${hash("turn-a")}.json`), JSON.stringify({ state: "running", updatedAt: 100 }))
+  assert.equal(readStatus("chat-a", directory, 110).state, "running")
+  applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 200)
+  applyEvent(event("Stop"), directory, 300)
+  assert.equal(readStatus("chat-a", directory, 310).state, "running")
+  assert.equal(readStatus("chat-a", directory, 310).updatedAt, 200)
+  assert.equal(JSON.parse(fs.readFileSync(path.join(turns, `${hash("turn-a")}.json`))).startedAt, 100)
+  applyEvent(event("Stop", "chat-a", "turn-b"), directory, 400)
+  assert.equal(readStatus("chat-a", directory, 410).activeTurns, 0)
 })
 
 test("Stop means a response ended; continuation and SessionEnd remain distinct", (t) => {
@@ -47,6 +98,8 @@ test("Stop means a response ended; continuation and SessionEnd remain distinct",
   assert.equal(readStatus("chat-a", directory, 350).state, "running")
   applyEvent(event("SessionEnd"), directory, 400)
   assert.equal(readStatus("chat-a", directory, 450).state, "ended")
+  applyEvent(event("Stop", "chat-a", "continuation"), directory, 500)
+  assert.equal(readStatus("chat-a", directory, 510).state, "ended", "late Stop cannot reopen a closed session")
 })
 
 test("resuming clears abandoned running turns, while compaction preserves live work", (t) => {
@@ -54,6 +107,8 @@ test("resuming clears abandoned running turns, while compaction preserves live w
   applyEvent(event("UserPromptSubmit"), directory, 100)
   applyEvent(event("SessionStart", "chat-a", "turn-a", { source: "resume" }), directory, 200)
   assert.equal(readStatus("chat-a", directory, 210).state, "unknown")
+  applyEvent(event("Stop"), directory, 215)
+  assert.equal(readStatus("chat-a", directory, 216).state, "unknown", "late events from before resume remain discarded")
   applyEvent(event("UserPromptSubmit", "chat-a", "turn-b"), directory, 220)
   applyEvent(event("SessionStart", "chat-a", "turn-b", { source: "compact" }), directory, 230)
   assert.equal(readStatus("chat-a", directory, 240).state, "running")
@@ -93,10 +148,10 @@ test("legacy chat-level markers do not suppress new turn openings", (t) => {
   assert.ok(handleHook(event("UserPromptSubmit"), directory))
   assert.equal(handleHook(event("UserPromptSubmit"), directory), null)
   assert.ok(handleHook(event("UserPromptSubmit", "chat-a", "turn-b"), directory))
-  assert.equal(readStatus("chat-a", directory).activeTurns, 2)
+  assert.equal(readStatus("chat-a", directory).activeTurns, 1)
 })
 
-test("parallel hook retries request one opening per turn without clearing overlapping work", async (t) => {
+test("parallel hook retries request one opening per turn while tracking only the current main turn", async (t) => {
   const directory = stateDirectory(t)
   const invoke = (turn) => new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [path.join(root, "adapters/codex/hook.cjs")], { env: { ...process.env, FLAPPY_CODEX_DATA: directory }, stdio: ["pipe", "pipe", "pipe"] })
@@ -113,9 +168,11 @@ test("parallel hook retries request one opening per turn without clearing overla
     assert.equal(replies.filter(Boolean).length, 1)
     assert.equal(JSON.parse(replies.find(Boolean)).hookSpecificOutput.hookEventName, "UserPromptSubmit")
   }
-  assert.equal(readStatus("chat-a", directory).activeTurns, 2)
+  assert.equal(readStatus("chat-a", directory).activeTurns, 1)
   applyEvent(event("Stop"), directory)
   assert.equal(readStatus("chat-a", directory).activeTurns, 1)
+  applyEvent(event("Stop", "chat-a", "turn-b"), directory)
+  assert.equal(readStatus("chat-a", directory).activeTurns, 0)
 })
 
 test("MCP exposes a native thread entrypoint and keeps status app-only", async (t) => {
