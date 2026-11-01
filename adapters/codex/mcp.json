@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "flappy-coding-break": {
+      "command": "node",
+      "args": ["./adapters/codex/server.cjs"],
+      "cwd": ".",
+      "env_vars": ["CODEX_HOME", "FLAPPY_CODEX_DATA"]
+    }
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "description": "Native Flappy Bird pane for Claude Code Terminal and Desktop",
+  "modules": ["./register.js"]
+}

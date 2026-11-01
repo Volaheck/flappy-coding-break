@@ -1,0 +1,18 @@
+{
+  "name": "flappy-coding-break",
+  "version": "1.1.0",
+  "description": "Play Flappy Bird inside Codex while your coding agent works.",
+  "author": { "name": "Volaheck" },
+  "homepage": "https://github.com/Volaheck/flappy-coding-break",
+  "repository": "https://github.com/Volaheck/flappy-coding-break",
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./adapters/codex/mcp.json",
+  "hooks": "./adapters/codex/hooks.json",
+  "interface": {
+    "displayName": "Flappy Coding Break",
+    "shortDescription": "Flappy Bird in the Codex side panel",
+    "category": "Productivity",
+    "defaultPrompt": ["Open Flappy Bird while you work"]
+  }
+}

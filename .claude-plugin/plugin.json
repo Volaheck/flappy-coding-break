@@ -1,0 +1,30 @@
+{
+  "name": "flappy-coding-break",
+  "version": "1.1.0",
+  "description": "A native Flappy Bird pane while Claude Code works, with no model calls during play.",
+  "author": { "name": "Volaheck" },
+  "repository": "https://github.com/Volaheck/flappy-coding-break",
+  "license": "MIT",
+  "hooks": "./adapters/claude/hooks.json",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "Open while Claude works",
+      "description": "Open the game after a turn has been running for one second.",
+      "default": true
+    },
+    "autoClose": {
+      "type": "boolean",
+      "title": "Close after Claude finishes",
+      "description": "Close an automatically opened pane after the current round finishes.",
+      "default": true
+    },
+    "locale": {
+      "type": "string",
+      "title": "Game language",
+      "description": "Language used by the game and its controls.",
+      "options": ["en", "ru"],
+      "default": "en"
+    }
+  }
+}

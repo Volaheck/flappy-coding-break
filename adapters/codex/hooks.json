@@ -1,0 +1,11 @@
+{
+  "description": "Updates local Flappy status without storing prompts or transcripts.",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3, "additionalContextLimit": 200 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3 }] }],
+    "Interrupt": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/adapters/codex/hook.cjs\"", "timeout": 3 }] }]
+  }
+}

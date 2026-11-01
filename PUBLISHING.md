@@ -1,44 +1,47 @@
 # Публикация
 
-Инструкция для того, кто будет публиковать. Файл не попадает в npm-пакет.
+Репозиторий: https://github.com/Volaheck/flappy-coding-break
 
-## 1. Заполнить данные репозитория
+## Проверка выпуска
 
-- `package.json`: добавить `repository`, `homepage`, `bugs` и при желании `author`
-  ```json
-  "repository": { "type": "git", "url": "git+https://github.com/OWNER/REPO.git" },
-  "homepage": "https://github.com/OWNER/REPO#readme",
-  "bugs": { "url": "https://github.com/OWNER/REPO/issues" }
-  ```
-- `README.md` и `README.ru.md`: заменить `OWNER/REPO` в команде установки из GitHub
-- `LICENSE`: при необходимости указать правообладателя вместо `opencode-flappybird contributors`
+1. Согласовать версию в `package.json`, `.claude-plugin/plugin.json` и `.codex-plugin/plugin.json`.
+2. Обновить `CHANGELOG.md`.
+3. Запустить `npm run build`, `npm test`, `npm run check:generated`, `npm run test:claude`, `npm pack --dry-run`. Проверка Claude использует закреплённую версию официального CLI и отдельный временный профиль.
+4. Проверить содержимое пакета: общий код, готовый OpenCode bundle, Claude mod, Codex MCP server/HTML bundle, установщик, skills и оба marketplace.
+5. Проверить реальные приложения: загрузку OpenCode, `/flappy` в Claude Terminal/Desktop, `open_flappy` в Codex Desktop с MCP Apps UI. Проверить смену статуса, несколько чатов, ручное закрытие, паузу и завершение партии. Mock/API-тесты не заменяют проверку UI хоста.
+6. Проверить установку в чистом профиле. Codex требует явного доверия хукам; установщик не должен обходить эту проверку.
 
-## 2. Git и GitHub
+## GitHub
 
-- Скопировать папку к себе, например `cp -R /Users/softcorp/Public/opencode-flappybird ~/`, и работать с копией.
-- Перед первым коммитом проверить `git config user.name` и `git config user.email`.
-- Создать публичный репозиторий, закоммитить файлы, запушить, поставить тег `v1.0.0`.
+Объединить проверенные изменения в `main`, создать тег версии и опубликовать его. Команда `npx github:Volaheck/flappy-coding-break install --all` берёт установщик из default branch, затем каждый менеджер плагинов устанавливает проект из GitHub. Поэтому multi-harness исходники и готовые bundles должны уже находиться в этой ветке.
 
-## 3. npm
+Для проверки ветки до слияния:
 
-- Имя `opencode-flappybird` на 30.10.2026 было свободно, проверьте ещё раз: `npm view opencode-flappybird`
-- Войти в npm: `npm login`, проверить `npm whoami`
-- `npm publish --access public`
-- В пакет попадают `gui-experimental.cjs`, `package.json`, `README.md`, `LICENSE`, проверить можно через `npm pack --dry-run`
+```sh
+node bin/flappy.js install --codex --claude --source .
+node bin/flappy.js install --opencode --opencode-source github:Volaheck/flappy-coding-break#feature/multi-harness
+```
 
-## 4. Проверка установки
+Вторая команда требует опубликованную ветку. Для OpenCode также можно указать локальную папку в глобальном конфиге. Не передавай временную папку `npx` как постоянный marketplace.
 
-- `opencode plugin add opencode-flappybird`
-- `opencode plugin list` должен показать `opencode-flappybird`, в Desktop плагин появится в **Settings → Extensions → Plugins**
+## npm
 
-## 5. Каталоги
+Пакет сохраняет имя `opencode-flappybird`, экспорт `./gui-experimental` и добавляет executable `flappy-coding-break`.
 
-- opencode.im: подхватит автоматически благодаря ключевому слову `opencode-plugin` и примеру установки в README, или вручную через https://opencode.im/submit
-- awesome-opencode: pull request в https://github.com/awesome-opencode/awesome-opencode
-- opencode.cafe: https://opencode.cafe/submit
-- Страница Ecosystem в документации OpenCode: pull request в `anomalyco/opencode`, файл `packages/web/src/content/docs/ecosystem.mdx`
+После проверки владельца пакета и входа в npm:
 
-## 6. Обновления
+```sh
+npm publish --access public
+```
 
-- Поднять версию в `package.json`, дописать `CHANGELOG.md`, `npm publish`, поставить git-тег
-- Пользователи обновляются командой `opencode plugin update`
+Публикация npm — отдельное действие; сборка или GitHub push её не выполняют. `prepack` пересобирает готовые файлы. Если используется GitHub-установка, npm-публикация не требуется.
+
+## Каталоги
+
+Claude использует `.claude-plugin/marketplace.json`, Codex — `.agents/plugins/marketplace.json`. Оба ссылаются на корень одного репозитория и плагин `flappy-coding-break`.
+
+Codex-версия содержит локальные lifecycle hooks. Согласно текущим правилам OpenAI такие плагины распространяются через ручную/local marketplace установку и не подходят для публичного каталога с hooks. Не заявляй публикацию в каталоге OpenAI без отдельной проверки требований.
+
+## Обновления
+
+Обновляй плагины штатными менеджерами каждого приложения. После изменения хуков Codex может потребовать повторную проверку доверия. Схемы интерфейсов экспериментальные: при обновлении хостов перепроверяй native rendering и отражай ограничения в обеих версиях README.

@@ -1,0 +1,11 @@
+{
+  "name": "flappy-coding-break",
+  "owner": { "name": "Volaheck" },
+  "plugins": [
+    {
+      "name": "flappy-coding-break",
+      "source": "./",
+      "description": "Play Flappy Bird in a native pane while Claude Code works."
+    }
+  ]
+}

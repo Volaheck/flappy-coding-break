@@ -1,20 +1,55 @@
 {
   "name": "opencode-flappybird",
-  "version": "1.0.0",
-  "description": "Flappy Bird for OpenCode Desktop: a side panel game that opens while the agent is working",
+  "version": "1.1.0",
+  "description": "Flappy Coding Break: play Flappy Bird inside OpenCode, Claude Code, and Codex while your agent works",
   "type": "module",
   "license": "MIT",
   "keywords": [
     "opencode",
     "opencode-plugin",
     "opencode-desktop",
+    "claude-code",
+    "codex",
+    "coding-agent",
     "game",
     "flappy-bird"
   ],
   "exports": {
     "./gui-experimental": "./gui-experimental.cjs"
   },
+  "bin": {
+    "flappy-coding-break": "./bin/flappy.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Volaheck/flappy-coding-break.git"
+  },
+  "homepage": "https://github.com/Volaheck/flappy-coding-break#readme",
+  "bugs": {
+    "url": "https://github.com/Volaheck/flappy-coding-break/issues"
+  },
+  "scripts": {
+    "build": "node scripts/build-opencode.mjs && node scripts/build-game.mjs && node scripts/build-claude.mjs",
+    "check:generated": "node scripts/build-opencode.mjs --check && node scripts/build-game.mjs --check && node scripts/build-claude.mjs --check",
+    "test": "node scripts/test-unit.mjs",
+    "test:claude": "node scripts/test-claude.mjs",
+    "prepack": "npm run build"
+  },
   "files": [
-    "gui-experimental.cjs"
+    "gui-experimental.cjs",
+    "game/",
+    "web/",
+    "adapters/",
+    "bin/",
+    "installer/",
+    "scripts/",
+    "skills/",
+    ".claude-plugin/",
+    ".codex-plugin/",
+    ".agents/plugins/",
+    "README.ru.md"
   ]
 }
