@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url"
 import { register } from "../adapters/claude/register.js"
 import FlappyClient from "../adapters/claude/client.js"
 import { createGame } from "../adapters/claude/core.js"
+import { duckFrame } from "../adapters/claude/duck.js"
 
 const PANE = "flappy-coding-break"
 const elements = Object.fromEntries(["Box", "Text", "Button", "Client", "Svg"].map((type) => [type, (props) => ({ type, props })]))
@@ -464,18 +465,16 @@ function desktopClient(status = "running", bodyRows = 29, columns = 27) {
   return { client, props, draw: () => FlappyClient(props, client.surface) }
 }
 
-test("Claude desktop shows the Canvas heads-up display for every phase and the agent's status", () => {
+test("Claude desktop shows the Flappy Duck heads-up display for every phase and the agent's status", () => {
   const { client, props, draw } = desktopClient()
   let texts = textsOf(draw())
-  for (const expected of ["Flappy Bird", "Click to start", "Best: 5", "Agent is working…"]) assert.ok(texts.includes(expected), expected)
+  for (const expected of ["Click to start", "Best: 5", "Space or ↑ to flap · P to pause", "Agent is working…"]) assert.ok(texts.includes(expected), expected)
   client.key("w")
   client.surface.state.game.score = 3
-  const playing = draw()
-  const score = allElements(playing).find((element) => element.type === "Text" && element.props.size === "title")
-  assert.deepEqual(score.props.children, ["3"])
+  assert.ok(textsOf(draw()).includes("Score: 3"))
   client.key("p")
   texts = textsOf(draw())
-  assert.ok(texts.includes("Paused") && texts.includes("3"))
+  for (const expected of ["Paused", "Click or Space to continue", "Score: 3"]) assert.ok(texts.includes(expected), expected)
   client.key("p")
   const game = client.surface.state.game
   game.score = 21
@@ -484,7 +483,9 @@ test("Claude desktop shows the Canvas heads-up display for every phase and the a
   assert.equal(game.phase, "over")
   game.deadAt = game.time - 1
   texts = textsOf(draw())
-  for (const expected of ["Game Over", "Score", "21", "Best", "🥈", "Click or Space to play again"]) assert.ok(texts.includes(expected), expected)
+  for (const expected of ["Game Over", "21", "NEW RECORD!", "↻  Click or Space to play again", "Best score"]) assert.ok(texts.includes(expected), expected)
+  const phrases = ["Quack-tastic! A new personal best!", "Your wings are getting stronger — new record!", "Flying higher than ever! Best score yet!", "Amazing! You've outdone yourself!"]
+  assert.ok(phrases.some((phrase) => texts.join(" ").includes(phrase)))
   props.status = "done"
   texts = textsOf(draw())
   for (const expected of ["Round complete", "Play again when the agent starts working", "Agent is done"]) assert.ok(texts.includes(expected), expected)
@@ -502,7 +503,7 @@ test("Claude desktop board layers are placed by explicit cells and leave the con
     assert.equal(flow[0].props.height, rows)
     assert.equal(flow.length, 2)
     const overlays = tree.props.children.filter((child) => child.props.position === "absolute")
-    assert.ok(overlays.length >= 4)
+    assert.ok(overlays.length >= 3)
     for (const overlay of overlays) {
       assert.ok(Number.isInteger(overlay.props.top) && overlay.props.top >= 0 && overlay.props.top < rows)
       if (overlay.props.height !== undefined) assert.equal(overlay.props.height, rows)
@@ -532,16 +533,35 @@ test("Claude desktop board stays well inside the Client tree bounds in its busie
   }
 })
 
-test("Claude desktop bird has smoothed edges finished against what lies behind it", () => {
+test("Claude desktop duck has smoothed edges finished against what lies behind it", () => {
   const { client, draw } = desktopClient()
   draw()
   const game = client.surface.state.game
   game.bird.y = 200
-  const plain = new Set(["#f8c63f", "#fbe28f", "#e6a12a", "#3b2a20", "#ffffff", "#1b1b1b", "#f6662b", "#df4a16", "#fff6dc"])
-  const bird = draw().props.children.filter((child) => child.props.position === "absolute")[2]
-  const colors = allElements(bird).map((element) => element.props.backgroundColor).filter(Boolean)
-  assert.ok(colors.some((color) => plain.has(color)))
-  assert.ok(colors.filter((color) => !plain.has(color)).length > 20)
+  const opaque = new Set(duckFrame(game).flat().map((run) => run.hex).filter(Boolean))
+  const duck = draw().props.children.filter((child) => child.props.position === "absolute")[1]
+  const colors = allElements(duck).map((element) => element.props.backgroundColor).filter(Boolean)
+  assert.ok(colors.filter((color) => opaque.has(color)).length > 100)
+  assert.ok(colors.filter((color) => !opaque.has(color)).length > 20)
+})
+
+test("Claude desktop veils the moving board as Flappy Duck darkens results and the pause screen", async () => {
+  const { client, draw } = desktopClient()
+  draw()
+  const game = client.surface.state.game
+  const colours = () => new Set(allElements(draw().props.children[2]).map((element) => element.props.backgroundColor).filter(Boolean))
+  const bright = colours()
+  client.key("w")
+  client.key("p")
+  const paused = colours()
+  assert.ok([...paused].every((color) => !bright.has(color) || color === "#000000"))
+  const host = createHost()
+  const render = () => host.emit("ui.render", { component: "Pane", requestId: PANE, surface: "desktop", props: { isFocused: true, scroll: { bodyRows: 29 } } })
+  const scenery = (tree) => allElements(tree).find((element) => element.type === "Svg").props.source
+  assert.ok(!scenery(await render()).includes("fill-opacity"))
+  await host.emit("ui.message", { requestId: PANE, element: "flappy-game", data: { type: "state", phase: "over", animating: true, best: 0, score: 0 } })
+  assert.ok(scenery(await render()).includes('fill-opacity="0.8"'))
+  assert.equal(game.phase, "paused")
 })
 
 test("Claude desktop scenery takes the width the Client last laid out", async () => {

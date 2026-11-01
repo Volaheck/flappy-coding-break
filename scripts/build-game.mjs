@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import path from "node:path"
 
 const root = fileURLToPath(new URL("../", import.meta.url))
-const modules = ["constants", "core", "canvas", "i18n"]
+const modules = ["constants", "core", "art", "theme", "canvas", "i18n"]
 const sources = await Promise.all(modules.map(async (name) => {
   const source = await readFile(path.join(root, "game", `${name}.cjs`), "utf8")
   return `${JSON.stringify(`./${name}.cjs`)}: (module, exports, require) => {\n${source}\n}`

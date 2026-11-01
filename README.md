@@ -1,6 +1,6 @@
 # Flappy Coding Break
 
-Play Flappy Bird while your coding agent works. One repository, one shared game, three integrations.
+Play Flappy Bird while your coding agent works, in the style of Flappy Duck: a duck pilot weaving its plane between columns of crates over a city skyline. One repository, one shared game, three integrations.
 
 [Русская версия](README.ru.md) · **Install:** [for people](#for-people) · [for AI agents](#for-ai-agents)
 
@@ -101,6 +101,8 @@ npm run check:generated
 npm run test:claude
 npm pack --dry-run
 ```
+
+The art (duck, crates, city and clouds) comes from Flappy Duck; `node scripts/import-duck-art.mjs <flappy-duck-frontend checkout>` re-imports it into `game/art.cjs` and needs ImageMagick and `cwebp`. The palette and layout shared by every renderer live in `game/theme.cjs`.
 
 There are no runtime npm dependencies, and the exported `./gui-experimental` entrypoint is a single self-contained CommonJS bundle. The shared physics lives in `game/core.cjs`, the Canvas renderer in `game/canvas.cjs`, and translations in `game/i18n.cjs`. Host-specific code lives in `adapters/`.
 

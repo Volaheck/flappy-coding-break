@@ -1,6 +1,7 @@
 import { translate } from "./i18n.js"
 import { boardAspect, desktopBoardRows } from "./field.js"
 import { drawBackdrop } from "./svg.js"
+import { THEME } from "./theme.js"
 
 const PANE = "flappy-coding-break"
 const SKILL = "flappy-coding-break:flappy"
@@ -101,6 +102,7 @@ export function register(on, options = {}) {
     ownerToken: undefined,
     checkingToken: undefined,
     columns: undefined,
+    dim: 0,
   }
   let finished = false
 
@@ -211,7 +213,7 @@ export function register(on, options = {}) {
     // The still scenery lies under the Client, which draws the text, the moving board and takes its clicks.
     return Box({ width: "100%", height: bodyRows, children: [
       Box({ position: "absolute", top: 0, left: 0, width: "100%", height: rows, overflow: "hidden", children: [
-        Svg({ source: drawBackdrop(boardAspect(columns, rows)), alt: "Flappy Bird" }),
+        Svg({ source: drawBackdrop(boardAspect(columns, rows), state.dim), alt: "Flappy Bird" }),
       ] }),
       Box({ position: "relative", width: "100%", height: bodyRows, children: [client] }),
     ] })
@@ -221,8 +223,11 @@ export function register(on, options = {}) {
     if (e.requestId !== PANE || e.element !== CLIENT || e.data?.type !== "state") return next(e)
     const data = e.data
     if (!phases.has(data.phase) || typeof data.animating !== "boolean" || !Number.isSafeInteger(data.best) || data.best < 0) return next(e)
-    if (Number.isSafeInteger(data.columns) && data.columns > 0 && data.columns <= 1000 && data.columns !== state.columns) {
-      state.columns = data.columns
+    const dim = data.phase === "over" || data.phase === "finished" ? THEME.ui.veil.result : data.phase === "paused" ? THEME.ui.veil.paused : 0
+    const columns = Number.isSafeInteger(data.columns) && data.columns > 0 && data.columns <= 1000 ? data.columns : state.columns
+    if (columns !== state.columns || dim !== state.dim) {
+      state.columns = columns
+      state.dim = dim
       $.ui.invalidate("ui.render")
     }
     if (Number.isSafeInteger(data.score) && data.score >= 0) {

@@ -11,8 +11,21 @@ export const constants = {
   "TOP_SHARE": 0.62,
   "BIRD_X": 84,
   "BIRD_R": 11,
-  "BIRD_W": 44,
-  "BIRD_H": 32,
+  "DUCK_SIZE": 62,
+  "BIRD_BOXES": [
+    [
+      -25.5,
+      -8,
+      28,
+      10.5
+    ],
+    [
+      -9.5,
+      -23.5,
+      8.5,
+      10.5
+    ]
+  ],
   "READY_Y": 214,
   "CEILING": -20,
   "GRAVITY": 1500,
@@ -20,22 +33,17 @@ export const constants = {
   "MAX_FALL": 520,
   "SPEED": 125,
   "PIPE_W": 52,
-  "CAP_W": 60,
+  "CAP_W": 52,
   "CAP_H": 24,
-  "CAP_OVER": 4,
+  "CAP_OVER": 0,
   "GAP": 118,
   "SPACING": 176,
   "PIPE_MARGIN": 56,
   "GAP_SHIFT": 150,
   "RESTART_DELAY": 0.7
 }
-const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, BIRD_W, BIRD_H, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = constants
+const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, DUCK_SIZE, BIRD_BOXES, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = constants
 const clamp = (value, min, max) => (value < min ? min : value > max ? max : value)
-const hitRect = function hitRect(cx, cy, radius, x, y, width, height) {
-  const dx = cx - clamp(cx, x, x + width)
-  const dy = cy - clamp(cy, y, y + height)
-  return dx * dx + dy * dy < radius * radius
-}
 export const createGame = function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () => {}, saveScore = () => {}, random = Math.random } = {}) {
   const bird = { y: READY_Y, prevY: READY_Y, vy: 0, angle: 0, prevAngle: 0, wing: 0 }
   const pipes = []
@@ -183,19 +191,14 @@ export const createGame = function createGame(onEnd = () => {}, { best = 0, last
   function collides() {
     const cx = game.scroll + BIRD_X
     const cy = bird.y
-    const radius = BIRD_R - 1
     for (let index = 0; index < pipes.length; index++) {
       const pipe = pipes[index]
-      if (cx + radius < pipe.x - CAP_OVER || cx - radius > pipe.x + PIPE_W + CAP_OVER) continue
       const top = pipe.gap - GAP / 2
       const bottom = pipe.gap + GAP / 2
-      if (
-        hitRect(cx, cy, radius, pipe.x, -WORLD_H, PIPE_W, top - CAP_H + WORLD_H) ||
-        hitRect(cx, cy, radius, pipe.x - CAP_OVER, top - CAP_H, CAP_W, CAP_H) ||
-        hitRect(cx, cy, radius, pipe.x - CAP_OVER, bottom, CAP_W, CAP_H) ||
-        hitRect(cx, cy, radius, pipe.x, bottom + CAP_H, PIPE_W, WORLD_H)
-      )
-        return true
+      for (const [left, up, right, down] of BIRD_BOXES) {
+        if (cx + right <= pipe.x || cx + left >= pipe.x + PIPE_W) continue
+        if (cy + up < top || cy + down > bottom) return true
+      }
     }
     return false
   }

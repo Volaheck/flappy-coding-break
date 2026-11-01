@@ -124,7 +124,7 @@ test("native hook processes recover a lost Stop and finish the embedded round on
   assert.equal(app.status.state, "running")
   game.press()
   for (let steps = 0; game.score < 3 && steps < 3000; steps++) {
-    if (game.bird.y >= constants.READY_Y && game.bird.vy > 0) game.press()
+    if (game.bird.y >= constants.READY_Y + 12 && game.bird.vy > 0) game.press()
     game.step(constants.STEP)
     assert.equal(game.phase, "playing", "the round earns its score by passing pipes")
   }

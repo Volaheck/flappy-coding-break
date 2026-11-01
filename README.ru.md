@@ -1,6 +1,6 @@
 # Flappy Coding Break
 
-Играй во Flappy Bird, пока агент пишет код. Один репозиторий, общая игра и три интеграции.
+Играй во Flappy Bird, пока агент пишет код, в стиле Flappy Duck: утка-пилот ведёт самолётик между колоннами ящиков над силуэтом города. Один репозиторий, общая игра и три интеграции.
 
 [English](README.md) · **Установка:** [людям](#людям) · [ИИ-агентам](#для-ии-агентов)
 
@@ -101,6 +101,8 @@ npm run check:generated
 npm run test:claude
 npm pack --dry-run
 ```
+
+Графика (утка, ящики, город и облака) взята из Flappy Duck; `node scripts/import-duck-art.mjs <чекаут flappy-duck-frontend>` переимпортирует её в `game/art.cjs`, нужны ImageMagick и `cwebp`. Палитра и раскладка, общие для всех отрисовок, — в `game/theme.cjs`.
 
 Внешних npm-зависимостей для работы нет, экспорт `./gui-experimental` — один готовый CommonJS-файл. Общая физика — `game/core.cjs`, Canvas-отрисовка — `game/canvas.cjs`, переводы — `game/i18n.cjs`. Интеграции расположены в `adapters/`.
 

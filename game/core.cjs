@@ -1,15 +1,9 @@
 "use strict"
 
 const constants = require("./constants.cjs")
-const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, BIRD_W, BIRD_H, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = constants
+const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, DUCK_SIZE, BIRD_BOXES, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = constants
 
 const clamp = (value, min, max) => (value < min ? min : value > max ? max : value)
-
-function hitRect(cx, cy, radius, x, y, width, height) {
-  const dx = cx - clamp(cx, x, x + width)
-  const dy = cy - clamp(cy, y, y + height)
-  return dx * dx + dy * dy < radius * radius
-}
 
 function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () => {}, saveScore = () => {}, random = Math.random } = {}) {
   const bird = { y: READY_Y, prevY: READY_Y, vy: 0, angle: 0, prevAngle: 0, wing: 0 }
@@ -158,19 +152,14 @@ function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () =
   function collides() {
     const cx = game.scroll + BIRD_X
     const cy = bird.y
-    const radius = BIRD_R - 1
     for (let index = 0; index < pipes.length; index++) {
       const pipe = pipes[index]
-      if (cx + radius < pipe.x - CAP_OVER || cx - radius > pipe.x + PIPE_W + CAP_OVER) continue
       const top = pipe.gap - GAP / 2
       const bottom = pipe.gap + GAP / 2
-      if (
-        hitRect(cx, cy, radius, pipe.x, -WORLD_H, PIPE_W, top - CAP_H + WORLD_H) ||
-        hitRect(cx, cy, radius, pipe.x - CAP_OVER, top - CAP_H, CAP_W, CAP_H) ||
-        hitRect(cx, cy, radius, pipe.x - CAP_OVER, bottom, CAP_W, CAP_H) ||
-        hitRect(cx, cy, radius, pipe.x, bottom + CAP_H, PIPE_W, WORLD_H)
-      )
-        return true
+      for (const [left, up, right, down] of BIRD_BOXES) {
+        if (cx + right <= pipe.x || cx + left >= pipe.x + PIPE_W) continue
+        if (cy + up < top || cy + down > bottom) return true
+      }
     }
     return false
   }
@@ -228,4 +217,4 @@ function createGame(onEnd = () => {}, { best = 0, lastScore = 0, saveBest = () =
   return game
 }
 
-module.exports = { createGame, constants, clamp, hitRect }
+module.exports = { createGame, constants, clamp }

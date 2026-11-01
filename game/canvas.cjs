@@ -1,79 +1,17 @@
 "use strict"
 
 const { createGame } = require("./core.cjs")
-const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, GROUND_H, MIN_W, MAX_W, TOP_SHARE, BIRD_X, BIRD_R, BIRD_W, BIRD_H, READY_Y, CEILING, GRAVITY, FLAP, MAX_FALL, SPEED, PIPE_W, CAP_W, CAP_H, CAP_OVER, GAP, SPACING, PIPE_MARGIN, GAP_SHIFT, RESTART_DELAY } = require("./constants.cjs")
+const { STEP, MAX_FRAME, MAX_STEPS, WORLD_H, GROUND_Y, MIN_W, MAX_W, TOP_SHARE, BIRD_X, DUCK_SIZE, PIPE_W, GAP, RESTART_DELAY } = require("./constants.cjs")
+const { DUCK_SHEET, CITY, CLOUDS } = require("./art.cjs")
+const { THEME, phraseKind } = require("./theme.cjs")
 
 const BEST_KEY = "opencode.flappybird.best"
 const SCORE_KEY = "flappy-coding-break.lastScore"
 const ENGAGED_FOR = 3000
 
-
-
-const WING = [0, 1, 2, 1]
-
-
-const BACKDROP_W = 288
-const GROUND_W = 168
-const PARALLAX = 0.25
-
-const FONT = 'ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif'
+const FONT = '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter Variable", Inter, "Segoe UI", system-ui, sans-serif'
 const FLAP_KEYS = new Set(["Space", "ArrowUp", "KeyW", "Enter", "NumpadEnter"])
-
-const COLORS = {
-  skyTop: "#3fb3c3",
-  skyMid: "#71cdd6",
-  skyLow: "#a8e3e6",
-  cloud: "#e8f8f4",
-  cloudShade: "#d3efec",
-  city: "#a7ddd6",
-  cityEdge: "#8ccac2",
-  window: "#c9eee8",
-  bush: "#5fcf6e",
-  bushDark: "#43b157",
-  grass: "#73bf2e",
-  grassLight: "#9ce35c",
-  grassEdge: "#3b6a17",
-  grassShade: "#558f22",
-  dirt: "#ded895",
-  dirtLow: "#d2c97f",
-  dirtLine: "#c8bd70",
-  dirtDeep: "#d2c97f",
-  pipeEdge: "#2f5314",
-  pipeDark: "#4b861d",
-  pipe: "#74bf2e",
-  pipeLight: "#a5e866",
-  pipeShine: "#d4f7ad",
-  outline: "#3b2a20",
-  body: "#f8c63f",
-  belly: "#fbe28f",
-  shade: "#e6a12a",
-  wing: "#fff6dc",
-  beak: "#f6662b",
-  beakLow: "#df4a16",
-  board: "#ded895",
-  boardEdge: "#543847",
-  boardLabel: "#e07535",
-  boardEmpty: "#cdc283",
-  record: "#e5432f",
-  pill: "rgba(12, 30, 38, 0.74)",
-  running: "#ffd166",
-  done: "#7ee787",
-}
-
-const MEDALS = [
-  { score: 40, fill: "#eef1f4", ring: "#a6adb5", shine: "#ffffff" },
-  { score: 30, fill: "#f6c445", ring: "#b98414", shine: "#fff1b8" },
-  { score: 20, fill: "#d9dde2", ring: "#8d949c", shine: "#ffffff" },
-  { score: 10, fill: "#e19a5c", ring: "#a15d24", shine: "#ffd7b0" },
-]
-
-const TEXT = {
-  score: { weight: 800, fill: "#ffffff", stroke: "#3b2a20", line: 0.16 },
-  title: { weight: 800, fill: "#ffffff", stroke: "#3b2a20", line: 0.16 },
-  over: { weight: 800, fill: "#fca148", stroke: "#5a2d0c", line: 0.16 },
-  hint: { weight: 700, fill: "#ffffff", stroke: "#2a3b40", line: 0.2 },
-  small: { weight: 650, fill: "#ffffff", stroke: "#2a3b40", line: 0.2 },
-}
+const { artScale: ART, crate: CRATE, ui: UI } = THEME
 
 const clamp = (value, min, max) => (value < min ? min : value > max ? max : value)
 const lerp = (from, to, amount) => from + (to - from) * amount
@@ -108,17 +46,6 @@ function writeScore(value) {
   } catch {}
 }
 
-function seeded(seed) {
-  let state = seed >>> 0
-  return () => {
-    state = (state + 0x6d2b79f5) >>> 0
-    let value = Math.imul(state ^ (state >>> 15), 1 | state)
-    value = (value + Math.imul(value ^ (value >>> 7), 61 | value)) ^ value
-    return ((value ^ (value >>> 14)) >>> 0) / 4294967296
-  }
-}
-
-
 function createSurface(width, height) {
   const surface = document.createElement("canvas")
   surface.width = Math.max(1, Math.ceil(width))
@@ -134,227 +61,107 @@ function paintTile(width, height, k, paint) {
   return { surface, sx: width / surface.width, sy: height / surface.height }
 }
 
-function circle(g, x, y, radius) {
-  g.beginPath()
-  g.arc(x, y, radius, 0, Math.PI * 2)
-  g.fill()
-}
+// The duck sheet decodes once per page; views that drew before it landed redraw when it does.
+let duckSheet
+const duckWaiters = new Set()
 
-function wrapped(width, x, draw) {
-  draw(x - width)
-  draw(x)
-  draw(x + width)
-}
-
-function star(g, x, y, outer, inner) {
-  g.beginPath()
-  for (let point = 0; point < 10; point++) {
-    const radius = point % 2 === 0 ? outer : inner
-    const angle = -Math.PI / 2 + (point * Math.PI) / 5
-    g.lineTo(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius)
+function loadDuck(wake) {
+  if (!duckSheet) {
+    duckSheet = new Image()
+    duckSheet.decoding = "async"
+    duckSheet.onload = () => {
+      for (const waiter of duckWaiters) waiter()
+      duckWaiters.clear()
+    }
+    duckSheet.src = DUCK_SHEET.src
   }
-  g.closePath()
-  g.fill()
+  if (!duckSheet.complete) duckWaiters.add(wake)
+  return duckSheet
 }
 
-function building(g, x, top, width) {
-  g.fillStyle = COLORS.city
-  g.fillRect(x, top, width, GROUND_Y - top)
-  g.fillStyle = COLORS.cityEdge
-  g.fillRect(x, top, width, 2)
-  g.fillRect(x + width - 2, top, 2, GROUND_Y - top)
-  g.fillStyle = COLORS.window
-  for (let y = top + 6; y < 356; y += 9) {
-    for (let column = x + 4; column < x + width - 5; column += 7) g.fillRect(column, y, 3, 4)
-  }
-}
-
-function paintBackdrop(k) {
-  return paintTile(BACKDROP_W, GROUND_Y, k, (g) => {
-    const sky = g.createLinearGradient(0, 0, 0, GROUND_Y)
-    sky.addColorStop(0, COLORS.skyTop)
-    sky.addColorStop(0.6, COLORS.skyMid)
-    sky.addColorStop(1, COLORS.skyLow)
-    g.fillStyle = sky
-    g.fillRect(0, 0, BACKDROP_W, GROUND_Y)
-
-    const random = seeded(11)
-    g.fillStyle = "rgba(255, 255, 255, 0.85)"
-    for (const [x, y, size] of [
-      [46, 74, 1],
-      [178, 146, 0.75],
-      [244, 38, 0.55],
-    ]) {
-      wrapped(BACKDROP_W, x, (left) => {
-        circle(g, left, y, 13 * size)
-        circle(g, left + 15 * size, y - 7 * size, 17 * size)
-        circle(g, left + 32 * size, y - 2 * size, 13 * size)
-        circle(g, left + 44 * size, y + 3 * size, 9 * size)
-        g.fillRect(left, y, 44 * size, 12 * size)
-      })
-    }
-
-    const bumps = 13
-    const bump = BACKDROP_W / bumps
-    g.fillStyle = COLORS.cloudShade
-    for (let index = 0; index < bumps; index++) {
-      const radius = 18 + random() * 12
-      const y = 322 - random() * 8
-      wrapped(BACKDROP_W, index * bump, (x) => circle(g, x, y, radius))
-    }
-    g.fillRect(0, 322, BACKDROP_W, GROUND_Y - 322)
-    g.fillStyle = COLORS.cloud
-    for (let index = 0; index < bumps; index++) {
-      const radius = 14 + random() * 10
-      const y = 332 - random() * 6
-      wrapped(BACKDROP_W, (index + 0.5) * bump, (x) => circle(g, x, y, radius))
-    }
-    g.fillRect(0, 332, BACKDROP_W, GROUND_Y - 332)
-
-    for (let left = 0; left < BACKDROP_W; ) {
-      const width = 16 + Math.floor(random() * 4) * 6
-      const top = 362 - (34 + random() * 46)
-      wrapped(BACKDROP_W, left, (x) => building(g, x, top, width))
-      left += width - 2
-    }
-
-    const shrubs = 12
-    const shrub = BACKDROP_W / shrubs
-    g.fillStyle = COLORS.bushDark
-    for (let index = 0; index < shrubs; index++) {
-      const radius = 15 + random() * 9
-      wrapped(BACKDROP_W, index * shrub + shrub / 2, (x) => circle(g, x, 372, radius))
-    }
-    g.fillStyle = COLORS.bush
-    for (let index = 0; index < shrubs; index++) {
-      const radius = 13 + random() * 9
-      wrapped(BACKDROP_W, index * shrub, (x) => circle(g, x, 380, radius))
-    }
-    g.fillRect(0, 380, BACKDROP_W, GROUND_Y - 380)
-  })
-}
-
-function paintGround(k) {
-  return paintTile(GROUND_W, GROUND_H, k, (g) => {
-    const dirt = g.createLinearGradient(0, 18, 0, GROUND_H)
-    dirt.addColorStop(0, COLORS.dirt)
-    dirt.addColorStop(1, COLORS.dirtLow)
-    g.fillStyle = dirt
-    g.fillRect(0, 0, GROUND_W, GROUND_H)
-    g.fillStyle = COLORS.grass
-    g.fillRect(0, 0, GROUND_W, 15)
-    g.fillStyle = COLORS.grassLight
-    for (let x = -24; x < GROUND_W + 24; x += 24) {
-      g.beginPath()
-      g.moveTo(x, 15)
-      g.lineTo(x + 12, 15)
-      g.lineTo(x + 20, 3)
-      g.lineTo(x + 8, 3)
-      g.closePath()
-      g.fill()
-    }
-    g.fillStyle = COLORS.grassEdge
-    g.fillRect(0, 0, GROUND_W, 3)
-    g.fillStyle = COLORS.grassShade
-    g.fillRect(0, 15, GROUND_W, 3)
-    g.fillStyle = COLORS.dirtLine
-    g.fillRect(0, 18, GROUND_W, 2)
-  })
-}
-
-function pipeGradient(g, width) {
-  const shade = g.createLinearGradient(0, 0, width, 0)
-  shade.addColorStop(0, COLORS.pipeDark)
-  shade.addColorStop(0.07, COLORS.pipeLight)
-  shade.addColorStop(0.16, COLORS.pipeShine)
-  shade.addColorStop(0.28, COLORS.pipeLight)
-  shade.addColorStop(0.55, COLORS.pipe)
-  shade.addColorStop(0.85, COLORS.pipeDark)
-  shade.addColorStop(1, COLORS.pipeEdge)
-  return shade
-}
-
-function paintPipeBody(k) {
-  return paintTile(PIPE_W, 4, k, (g) => {
-    g.fillStyle = pipeGradient(g, PIPE_W)
-    g.fillRect(0, 0, PIPE_W, 4)
-    g.fillStyle = COLORS.pipeEdge
-    g.fillRect(0, 0, 2, 4)
-    g.fillRect(PIPE_W - 2, 0, 2, 4)
-  }).surface
-}
-
-function paintPipeCap(k) {
-  return paintTile(CAP_W, CAP_H, k, (g) => {
-    g.fillStyle = pipeGradient(g, CAP_W)
-    g.fillRect(0, 0, CAP_W, CAP_H)
-    g.fillStyle = "rgba(255, 255, 255, 0.28)"
-    g.fillRect(2, 2, CAP_W - 4, 3)
-    g.fillStyle = "rgba(0, 0, 0, 0.18)"
-    g.fillRect(2, CAP_H - 5, CAP_W - 4, 3)
-    g.strokeStyle = COLORS.pipeEdge
-    g.lineWidth = 2
-    g.strokeRect(1, 1, CAP_W - 2, CAP_H - 2)
-  }).surface
-}
-
-function paintBird(k, frame) {
-  return paintTile(BIRD_W, BIRD_H, k, (g) => {
-    const body = () => {
-      g.beginPath()
-      g.ellipse(0, 0, 15, 11.5, 0, 0, Math.PI * 2)
-    }
-    g.translate(BIRD_W / 2, BIRD_H / 2)
-    g.lineJoin = "round"
-    g.lineWidth = 1.7
-    g.strokeStyle = COLORS.outline
-
-    body()
-    g.fillStyle = COLORS.body
+function paintCity(layer, k) {
+  const width = layer.width * ART
+  const height = layer.height * ART
+  return paintTile(width, height, k, (g) => {
+    g.fillStyle = layer.color
+    g.beginPath()
+    g.moveTo(0, height)
+    for (let index = 0; index < layer.points.length; index += 2) g.lineTo(layer.points[index] * ART, layer.points[index + 1] * ART)
+    g.lineTo(width, height)
+    g.closePath()
     g.fill()
+  })
+}
+
+function paintClouds(k) {
+  return paintTile(CLOUDS.width * ART, CLOUDS.height * ART, k, (g) => {
+    g.scale(ART, ART)
+    g.fillStyle = THEME.band.color
+    for (const shape of CLOUDS.shapes) {
+      const path = new Path2D(shape.d)
+      for (const offset of [-CLOUDS.width, 0, CLOUDS.width]) {
+        g.save()
+        g.translate(shape.x + offset, shape.y)
+        g.fill(path)
+        g.restore()
+      }
+    }
+    g.fillRect(0, CLOUDS.top, CLOUDS.width, CLOUDS.height - CLOUDS.top)
+  })
+}
+
+// A Flappy Duck crate: a bevelled golden box around a planked panel crossed by braces.
+function paintCrate(k) {
+  const size = PIPE_W
+  const inset = 8
+  const inner = size - inset * 2
+  return paintTile(size, size, k, (g) => {
+    g.fillStyle = CRATE.seam
+    g.beginPath()
+    g.roundRect(0, 0, size, size, 5)
+    g.fill()
+    g.fillStyle = CRATE.face
+    g.beginPath()
+    g.roundRect(1, 1, size - 2, size - 2, 4)
+    g.fill()
+    g.fillStyle = CRATE.light
+    g.fillRect(4, 2, size - 8, 2)
+    g.fillRect(2, 4, 2, size - 8)
+    g.fillStyle = CRATE.shade
+    g.fillRect(4, size - 4, size - 8, 2)
+    g.fillRect(size - 4, 4, 2, size - 8)
+    g.fillStyle = CRATE.panel
+    g.fillRect(inset, inset, inner, inner)
+    g.fillStyle = CRATE.plank
+    for (let plank = 1; plank < 5; plank++) g.fillRect(inset + (inner * plank) / 5 - 0.6, inset, 1.2, inner)
     g.save()
-    body()
+    g.beginPath()
+    g.rect(inset, inset, inner, inner)
     g.clip()
-    g.fillStyle = COLORS.belly
-    g.beginPath()
-    g.ellipse(4, 7, 13, 7, 0, 0, Math.PI * 2)
-    g.fill()
-    g.fillStyle = COLORS.shade
-    g.beginPath()
-    g.ellipse(-8, 9, 10, 5, 0, 0, Math.PI * 2)
-    g.fill()
+    g.lineWidth = 1.2
+    g.lineJoin = "round"
+    for (const mirrored of [false, true]) {
+      g.save()
+      if (mirrored) {
+        g.translate(size, 0)
+        g.scale(-1, 1)
+      }
+      g.beginPath()
+      g.moveTo(inset - 6, inset)
+      g.lineTo(inset + 5, inset)
+      g.lineTo(size - inset + 6, size - inset)
+      g.lineTo(size - inset - 5, size - inset)
+      g.closePath()
+      g.fillStyle = CRATE.brace
+      g.fill()
+      g.strokeStyle = CRATE.braceEdge
+      g.stroke()
+      g.restore()
+    }
     g.restore()
-    body()
-    g.stroke()
-
-    g.fillStyle = "#ffffff"
-    g.beginPath()
-    g.arc(6.5, -4.5, 5.4, 0, Math.PI * 2)
-    g.fill()
-    g.stroke()
-    g.fillStyle = "#1b1b1b"
-    circle(g, 8.4, -4.2, 2.2)
-
-    g.fillStyle = COLORS.beak
-    g.beginPath()
-    g.roundRect(6, -0.6, 13.5, 4.4, 2)
-    g.fill()
-    g.stroke()
-    g.fillStyle = COLORS.beakLow
-    g.beginPath()
-    g.roundRect(6, 3.4, 11.5, 4, 2)
-    g.fill()
-    g.stroke()
-
-    g.save()
-    g.translate(-6.5, 1.5 + [-3.6, 0, 3.4][frame])
-    g.rotate([-0.35, 0, 0.3][frame])
-    g.fillStyle = COLORS.wing
-    g.beginPath()
-    g.ellipse(0, 0, 7.6, 4.8, 0, 0, Math.PI * 2)
-    g.fill()
-    g.stroke()
-    g.restore()
+    g.strokeStyle = CRATE.shade
+    g.lineWidth = 1
+    g.strokeRect(inset + 0.5, inset + 0.5, inner - 1, inner - 1)
   }).surface
 }
 
@@ -366,123 +173,103 @@ function measureText(font, value) {
   return measurer.measureText(value).width
 }
 
-function paintText(value, size, style, k) {
+const fontOf = (size, weight) => `${weight} ${size}px ${FONT}`
+
+// The largest size up to `size` at which `value` spans no more than `width`.
+const fitted = (value, size, weight, width) => Math.min(size, (size * width) / Math.max(1, measureText(fontOf(size, weight), value)))
+
+// One line of text, centred in its own sprite; a soft shadow keeps it legible on the bright sky.
+function paintLabel(value, size, { weight = 700, color = UI.text, shadow = false } = {}, k) {
   const px = size * k
-  const font = `${style.weight} ${px}px ${FONT}`
-  const line = Math.max(1.5, px * style.line)
-  const pad = line + 2
+  const font = fontOf(px, weight)
+  const pad = Math.ceil(px * (shadow ? 0.35 : 0.1))
   const surface = createSurface(measureText(font, value) + pad * 2, px * 1.3 + pad * 2)
   const g = surface.getContext("2d")
-  const x = surface.width / 2
-  const y = surface.height / 2 + px * 0.05
   g.font = font
   g.textAlign = "center"
   g.textBaseline = "middle"
-  g.lineJoin = "round"
-  g.lineWidth = line
-  g.strokeStyle = style.stroke
-  g.strokeText(value, x, y)
-  g.fillStyle = style.fill
-  g.fillText(value, x, y)
+  if (shadow) {
+    g.shadowColor = "rgba(0, 0, 0, 0.22)"
+    g.shadowBlur = px * 0.2
+    g.shadowOffsetY = px * 0.05
+  }
+  g.fillStyle = color
+  g.fillText(value, surface.width / 2, surface.height / 2 + px * 0.04)
   return { surface, width: surface.width / k, height: surface.height / k }
 }
 
-function paintPill(value, tone, k) {
-  const px = 11.5 * k
-  const font = `700 ${px}px ${FONT}`
-  const dot = 7 * k
-  const padding = 9 * k
-  const space = 6 * k
-  const surface = createSurface(padding * 2 + dot + space + measureText(font, value), 22 * k)
-  const g = surface.getContext("2d")
-  g.fillStyle = COLORS.pill
-  g.beginPath()
-  g.roundRect(0, 0, surface.width, surface.height, surface.height / 2)
-  g.fill()
-  g.fillStyle = tone === "done" ? COLORS.done : COLORS.running
-  circle(g, padding + dot / 2, surface.height / 2, dot / 2)
-  g.font = font
-  g.textBaseline = "middle"
-  g.fillStyle = "#ffffff"
-  g.fillText(value, padding + dot + space, surface.height / 2 + px * 0.05)
-  return { surface, width: surface.width / k, height: surface.height / k }
-}
-
-function paintBoard(score, best, record, labels, k) {
-  const width = 220
-  const height = 112
+// A rounded chip of text in the style of Flappy Duck's translucent pills, with an optional status dot.
+function paintPill(value, size, { weight = 700, color = UI.text, background = UI.pill, padX = 9, padY = 4.5, radius, dot } = {}, k) {
+  const dotSize = dot ? size * 0.55 : 0
+  const gap = dot ? size * 0.45 : 0
+  const width = measureText(fontOf(size, weight), value) * 1.03 + padX * 2 + dotSize + gap
+  const height = size * 1.25 + padY * 2
   const surface = createSurface(width * k, height * k)
   const g = surface.getContext("2d")
-  g.scale(surface.width / width, surface.height / height)
-
-  g.fillStyle = COLORS.board
-  g.strokeStyle = COLORS.boardEdge
-  g.lineWidth = 3
+  g.scale(k, k)
+  g.fillStyle = background
   g.beginPath()
-  g.roundRect(1.5, 1.5, width - 3, height - 3, 10)
+  g.roundRect(0, 0, width, height, radius ?? height / 2)
   g.fill()
-  g.stroke()
-  g.strokeStyle = "rgba(255, 255, 255, 0.55)"
-  g.lineWidth = 1.5
-  g.beginPath()
-  g.roundRect(5.5, 5.5, width - 11, height - 11, 7)
-  g.stroke()
-
-  const right = width - 16
-  g.textBaseline = "middle"
-  g.lineJoin = "round"
-  g.font = `800 10.5px ${FONT}`
-  g.fillStyle = COLORS.boardLabel
-  g.textAlign = "center"
-  g.fillText(labels.medal, 54, 22)
-  g.textAlign = "right"
-  g.fillText(labels.score, right, 22)
-  g.fillText(labels.best, right, 66)
-
-  const number = `800 22px ${FONT}`
-  g.font = number
-  g.lineWidth = 4
-  g.strokeStyle = COLORS.boardEdge
-  g.fillStyle = "#ffffff"
-  for (const [value, y] of [
-    [score, 44],
-    [best, 88],
-  ]) {
-    g.strokeText(String(value), right, y)
-    g.fillText(String(value), right, y)
-  }
-
-  const medal = MEDALS.find((entry) => score >= entry.score)
-  g.beginPath()
-  g.arc(54, 68, 23, 0, Math.PI * 2)
-  g.fillStyle = medal ? medal.fill : COLORS.boardEmpty
-  g.fill()
-  if (medal) {
-    g.lineWidth = 3
-    g.strokeStyle = medal.ring
-    g.stroke()
-    g.fillStyle = medal.ring
-    star(g, 54, 69, 11, 4.6)
-    g.fillStyle = medal.shine
-    circle(g, 45, 59, 3.5)
-  }
-
-  if (record) {
-    const end = right - measureText(number, String(best)) - 8
-    g.font = `800 8px ${FONT}`
-    const badge = measureText(g.font, labels.record) + 10
-    g.fillStyle = COLORS.record
+  if (dot) {
+    g.fillStyle = dot
     g.beginPath()
-    g.roundRect(end - badge, 82, badge, 12, 6)
+    g.arc(padX + dotSize / 2, height / 2, dotSize / 2, 0, Math.PI * 2)
     g.fill()
-    g.fillStyle = "#ffffff"
-    g.textAlign = "center"
-    g.fillText(labels.record, end - badge / 2, 88.5)
   }
-
+  g.font = fontOf(size, weight)
+  g.textBaseline = "middle"
+  g.fillStyle = color
+  g.fillText(value, padX + dotSize + gap, height / 2 + size * 0.04)
   return { surface, width, height }
 }
 
+// Centred lines of a phrase, wrapped with a little room to spare inside `width`.
+function paintParagraph(value, size, width, k) {
+  const font = fontOf(size, 600)
+  const lines = []
+  for (const word of value.split(" ")) {
+    const line = lines.length ? `${lines[lines.length - 1]} ${word}` : word
+    if (lines.length && measureText(font, line) <= width * 0.92) lines[lines.length - 1] = line
+    else lines.push(word)
+  }
+  const lineHeight = size * 1.35
+  const surface = createSurface(width * k, lines.length * lineHeight * k)
+  const g = surface.getContext("2d")
+  g.scale(k, k)
+  g.font = fontOf(size, 600)
+  g.textAlign = "center"
+  g.textBaseline = "middle"
+  g.fillStyle = UI.text
+  lines.forEach((line, index) => g.fillText(line, width / 2, lineHeight * (index + 0.5)))
+  return { surface, width, height: lines.length * lineHeight }
+}
+
+// Flappy Duck's footer panel: a label on the left, a value on the right.
+function paintPanel(label, value, width, k) {
+  const height = 34
+  const surface = createSurface(width * k, height * k)
+  const g = surface.getContext("2d")
+  g.scale(k, k)
+  g.fillStyle = UI.pill
+  g.beginPath()
+  g.roundRect(0, 0, width, height, 10)
+  g.fill()
+  g.textBaseline = "middle"
+  g.fillStyle = UI.text
+  g.font = fontOf(12.5, 600)
+  g.fillText(label, 12, height / 2 + 0.5)
+  g.font = fontOf(13, 700)
+  g.textAlign = "right"
+  g.fillText(value, width - 12, height / 2 + 0.5)
+  return { surface, width, height }
+}
+
+function hashed(...values) {
+  let hash = 2166136261
+  for (const value of values) hash = Math.imul(hash ^ Math.round(value * 1000), 16777619)
+  return hash >>> 0
+}
 
 function createView(game, t, status, wake, touch) {
   const root = document.createElement("div")
@@ -506,15 +293,12 @@ function createView(game, t, status, wake, touch) {
   function buildArt() {
     clearTimeout(artTimer)
     const k = layout.k
-    const backdrop = paintBackdrop(k)
-    const ground = paintGround(k)
+    const repeat = (tile) => ({ pattern: g.createPattern(tile.surface, "repeat-x"), sx: tile.sx, sy: tile.sy })
     art = {
       k,
-      backdrop: { pattern: g.createPattern(backdrop.surface, "repeat-x"), sx: backdrop.sx, sy: backdrop.sy },
-      ground: { pattern: g.createPattern(ground.surface, "repeat-x"), sx: ground.sx, sy: ground.sy },
-      body: paintPipeBody(k),
-      cap: paintPipeCap(k),
-      birds: [0, 1, 2].map((frame) => paintBird(k, frame)),
+      cities: CITY.map((layer) => ({ ...repeat(paintCity(layer, k)), width: layer.width * ART, height: layer.height * ART })),
+      clouds: repeat(paintClouds(k)),
+      crate: paintCrate(k),
     }
     wake()
   }
@@ -557,10 +341,6 @@ function createView(game, t, status, wake, touch) {
     return next
   }
 
-  function text(name, value, size, style) {
-    return sprite(name, value, () => paintText(value, size, style, layout.k))
-  }
-
   function stamp(image, cx, cy, alpha = 1) {
     const k = layout.k
     const x = Math.round((cx - image.width / 2) * k) / k
@@ -585,99 +365,147 @@ function createView(game, t, status, wake, touch) {
     g.fillRect(0, -layout.top - 1, layout.field, layout.top + WORLD_H + layout.bottom + 2)
   }
 
+  function drawSky() {
+    const field = layout.field
+    const top = -layout.top - 1
+    const height = layout.top + WORLD_H + layout.bottom + 2
+    g.save()
+    g.translate(field / 2, top + height / 2)
+    g.scale(field / 2, height / 2)
+    const sky = g.createRadialGradient(0, 0, 0, 0, 0, 1)
+    sky.addColorStop(0.5, THEME.sky.inner)
+    sky.addColorStop(1, THEME.sky.outer)
+    g.fillStyle = sky
+    g.fillRect(-1, -1, 2, 2)
+    g.restore()
+  }
+
   function drawWorld(scroll) {
     const field = layout.field
-    if (layout.top > 0) {
-      g.fillStyle = COLORS.skyTop
-      g.fillRect(0, -layout.top - 1, field, layout.top + 1.5)
-    }
-    fill(art.backdrop, -((scroll * PARALLAX) % BACKDROP_W), 0)
-    g.fillRect(0, 0, field, GROUND_Y)
+    drawSky()
+    art.cities.forEach((city, index) => {
+      const top = THEME.city.base - city.height
+      fill(city, -((scroll * THEME.city.parallax[index]) % city.width), top)
+      g.fillRect(0, top, field, city.height)
+    })
 
-    const pipes = game.pipes
-    for (let index = 0; index < pipes.length; index++) {
-      const pipe = pipes[index]
+    for (const pipe of game.pipes) {
       const x = pipe.x - scroll
-      if (x > field + CAP_OVER || x + PIPE_W + CAP_OVER < 0) continue
+      if (x > field || x + PIPE_W < 0) continue
       const top = pipe.gap - GAP / 2
       const bottom = pipe.gap + GAP / 2
-      g.drawImage(art.body, x, -layout.top - 2, PIPE_W, top - CAP_H + layout.top + 2.5)
-      g.drawImage(art.cap, x - CAP_OVER, top - CAP_H, CAP_W, CAP_H)
-      g.drawImage(art.cap, x - CAP_OVER, bottom, CAP_W, CAP_H)
-      g.drawImage(art.body, x, bottom + CAP_H - 0.5, PIPE_W, GROUND_Y - bottom - CAP_H + 0.5)
+      for (let y = top - PIPE_W; y > -layout.top - PIPE_W; y -= PIPE_W) g.drawImage(art.crate, x, y, PIPE_W, PIPE_W)
+      for (let y = bottom; y < GROUND_Y + 20; y += PIPE_W) g.drawImage(art.crate, x, y, PIPE_W, PIPE_W)
     }
 
-    fill(art.ground, -(scroll % GROUND_W), GROUND_Y)
-    g.fillRect(0, GROUND_Y, field, GROUND_H)
-    if (layout.bottom > 0) {
-      g.fillStyle = COLORS.dirtDeep
-      g.fillRect(0, WORLD_H - 0.5, field, layout.bottom + 1.5)
-    }
+    const band = THEME.band.y
+    const tile = CLOUDS.width * ART
+    fill(art.clouds, -(scroll % tile), band)
+    g.fillRect(0, band, field, CLOUDS.height * ART)
+    g.fillStyle = THEME.band.color
+    g.fillRect(0, band + CLOUDS.height * ART - 0.5, field, WORLD_H + layout.bottom - band - CLOUDS.height * ART + 1.5)
   }
 
   function drawBird(alpha) {
+    const sheet = loadDuck(wake)
+    if (!sheet.complete || sheet.naturalWidth === 0) return
     const bird = game.bird
-    const frame = game.phase === "over" ? 1 : WING[Math.floor(bird.wing) % WING.length]
+    const frame = Math.floor(game.time * DUCK_SHEET.fps) % DUCK_SHEET.frames
+    const source = DUCK_SHEET.frame
+    const angle = lerp(bird.prevAngle, bird.angle, alpha)
     g.save()
     g.translate(BIRD_X, lerp(bird.prevY, bird.y, alpha))
-    g.rotate(lerp(bird.prevAngle, bird.angle, alpha))
-    g.drawImage(art.birds[frame], -BIRD_W / 2, -BIRD_H / 2, BIRD_W, BIRD_H)
+    g.rotate(game.phase === "over" ? angle : Math.min(angle, 1.1) * 0.6)
+    g.drawImage(sheet, (frame % DUCK_SHEET.columns) * source, Math.floor(frame / DUCK_SHEET.columns) * source, source, source, -DUCK_SIZE / 2, -DUCK_SIZE / 2, DUCK_SIZE, DUCK_SIZE)
     g.restore()
+  }
+
+  function label(name, value, size, style) {
+    return sprite(name, `${value}|${size}|${JSON.stringify(style)}`, () => paintLabel(value, size, style, layout.k))
+  }
+
+  function pill(name, value, size, style = {}) {
+    return sprite(name, `${value}|${size}|${JSON.stringify(style)}`, () => paintPill(value, size, style, layout.k))
+  }
+
+  // Flappy Duck's dashed rule, fading out towards its ends.
+  function separator(center, y, width, alpha) {
+    for (let x = -width / 2; x < width / 2; x += 8) {
+      g.globalAlpha = alpha * (1 - Math.abs(x + 2) / (width / 2)) * 0.9
+      g.fillStyle = UI.text
+      g.fillRect(center + x, y, 4, 1)
+    }
+    g.globalAlpha = 1
+  }
+
+  function drawResult(center, alpha) {
+    const finished = game.phase === "finished"
+    const elapsed = game.time - game.deadAt
+    const y = 190
+    stamp(label("result-title", t(finished ? "finished" : "over"), 13, { weight: 600, color: UI.hint }), center, y - 82, alpha)
+    stamp(label("result-score", String(game.score), 34, { weight: 800 }), center, y - 52, alpha)
+    let next = y - 22
+    if (game.record) {
+      stamp(pill("result-record", t("record").toUpperCase(), 10.5, { weight: 650, color: UI.record, background: UI.recordBg, padX: 7, padY: 3 }), center, next, alpha)
+      next += 20
+    }
+    separator(center, next, 180, alpha)
+    const phrases = t(`phrases.${phraseKind(game.score, game.record)}`)
+    const phrase = Array.isArray(phrases) ? phrases[hashed(game.deadAt, game.score, game.best) % phrases.length] : ""
+    const paragraph = sprite("result-phrase", phrase, () => paintParagraph(phrase, 12.5, Math.min(200, layout.field - 40), layout.k))
+    stamp(paragraph, center, next + 12 + paragraph.height / 2, alpha)
+    next += 12 + paragraph.height + 22
+    const hint = finished ? 1 : ease((elapsed - RESTART_DELAY) / 0.25)
+    const room = layout.field - 32
+    if (game.locked) stamp(label("result-hint", t("waiting"), fitted(t("waiting"), 11.5, 600, room), { weight: 600, color: UI.hint }), center, next, alpha * hint)
+    else {
+      const again = `↻  ${t("restart")}`
+      stamp(pill("result-hint", again, fitted(again, 12, 600, room - 24), { weight: 600, padX: 12, padY: 6 }), center, next, alpha * hint)
+    }
+    const width = Math.min(210, layout.field - 36)
+    const panel = sprite("result-best", `${t("bestScore")}|${game.best}|${width}`, () => paintPanel(t("bestScore"), String(game.best), width, layout.k))
+    stamp(panel, center, next + 38, alpha)
   }
 
   function drawHud() {
     const center = layout.field / 2
     const phase = game.phase
     const tone = status()
+    const result = phase === "over" || phase === "finished"
+    const shade = result ? (phase === "finished" ? 1 : ease((game.time - game.deadAt - 0.2) / 0.35)) : phase === "paused" ? 1 : 0
 
     if (phase === "paused") {
-      g.fillStyle = "rgba(8, 24, 32, 0.42)"
+      g.fillStyle = UI.dim
       cover()
     }
+    if (result && shade > 0) {
+      g.globalAlpha = shade
+      g.fillStyle = UI.overlay
+      cover()
+      g.globalAlpha = 1
+    }
     if (phase === "playing" || phase === "paused") {
-      stamp(text("score", String(game.score), 40, TEXT.score), center, -layout.top + 54)
+      stamp(pill("score", `${t("score")}: ${game.score}`, 14, { radius: 8, padX: 11, padY: 4 }), center, -layout.top + 24)
     }
-    if (tone) {
-      const value = t(tone === "running" ? "status.running" : "status.done")
-      stamp(
-        sprite("status", `${tone}:${value}`, () => paintPill(value, tone, layout.k)),
-        center,
-        GROUND_Y + 58,
-      )
-    }
-
     if (phase === "ready") {
-      stamp(text("title", "Flappy Bird", 32, TEXT.title), center, 112)
-      stamp(text("start", t("start"), 15, TEXT.hint), center, 290)
-      if (game.best > 0) stamp(text("best", `${t("best")}: ${game.best}`, 13, TEXT.small), center, 314)
-      stamp(text("keys", t("keys"), 11, TEXT.small), center, 336)
-      return
+      const start = t("start")
+      stamp(label("start", start, fitted(start, 28, 800, layout.field * 0.84), { weight: 800, shadow: true }), center, 112)
+      if (game.best > 0) stamp(pill("best", `${t("best")}: ${game.best}`, 12, { padX: 10, padY: 4 }), center, 146)
+      stamp(label("keys", t("keys"), fitted(t("keys"), 11, 600, layout.field - 28), { weight: 600, color: UI.hint, shadow: true }), center, 330)
     }
-
     if (phase === "paused") {
-      stamp(text("paused", t("paused"), 30, TEXT.title), center, 172)
-      stamp(text("resume", t("resume"), 14, TEXT.hint), center, 208)
-      return
+      stamp(label("paused", t("paused"), 28, { weight: 800, shadow: true }), center, 166)
+      stamp(pill("resume", t("resume"), fitted(t("resume"), 12, 600, layout.field - 56), { weight: 600, padX: 12, padY: 6 }), center, 200)
     }
-
-    if (phase !== "over" && phase !== "finished") return
-    const finished = phase === "finished"
-    const elapsed = game.time - game.deadAt
-    const title = finished ? 1 : ease((elapsed - 0.25) / 0.3)
-    if (title > 0) stamp(text("over", t(finished ? "finished" : "over"), finished ? 23 : 28, TEXT.over), center, 104 - (1 - title) * 14, title)
-    const board = finished ? 1 : ease((elapsed - 0.4) / 0.35)
-    if (board > 0) {
-      const labels = { score: t("score"), best: t("best"), medal: t("medal"), record: t("record") }
-      const value = [game.score, game.best, game.record, labels.score, labels.best, labels.medal, labels.record].join("|")
-      stamp(
-        sprite("board", value, () => paintBoard(game.score, game.best, game.record, labels, layout.k)),
-        center,
-        198 + (1 - board) * 36,
-        board,
-      )
+    if (result && shade > 0) drawResult(center, shade)
+    if (tone) {
+      const dark = result || phase === "paused"
+      const value = t(tone === "running" ? "status.running" : "status.done")
+      stamp(pill("status", value, fitted(value, 11.5, 600, layout.field - 60), {
+        weight: 600, dot: UI.status[tone], padX: 10, padY: 4,
+        color: dark ? UI.text : UI.statusText, background: dark ? UI.pill : UI.statusBg,
+      }), center, GROUND_Y + 64)
     }
-    const hint = finished ? 1 : ease((elapsed - RESTART_DELAY) / 0.25)
-    if (hint > 0) stamp(text("restart", t(game.locked ? "waiting" : "restart"), game.locked ? 10 : 14, TEXT.hint), center, 284, hint)
   }
 
   function draw(alpha) {
@@ -685,15 +513,16 @@ function createView(game, t, status, wake, touch) {
     if (!layout.ready || !art) return
     g.setTransform(layout.k, 0, 0, layout.k, 0, layout.top * layout.k)
     g.imageSmoothingEnabled = true
+    g.imageSmoothingQuality = "high"
     drawWorld(lerp(game.prevScroll, game.scroll, alpha))
     drawBird(alpha)
-    drawHud()
     if (game.flash > 0) {
-      g.globalAlpha = game.flash * 0.85
+      g.globalAlpha = game.flash * 0.7
       g.fillStyle = "#ffffff"
       cover()
       g.globalAlpha = 1
     }
+    drawHud()
   }
 
   const onPointer = (event) => {

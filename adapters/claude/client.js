@@ -1,7 +1,6 @@
 import { createGame, constants } from "./core.js"
 import { translate } from "./i18n.js"
 import { drawBoard } from "./pixels.js"
-import { warmBird } from "./bird.js"
 import { boardAspect, desktopBoardRows, fieldLayout } from "./field.js"
 import { drawHud, drawScene } from "./scene.js"
 
@@ -114,8 +113,7 @@ export default function FlappyClient(props, surface) {
   }
   if (desktop && rows > 0) {
     runtime.board = { columns, top: 0, bottom: rows }
-    warmBird()
-    const view = { ...fieldLayout(boardAspect(columns, rows)), rows }
+    const view = { ...fieldLayout(boardAspect(columns, rows)), rows, columns }
     const controls = game.locked
       ? Text({ wrap: "truncate", dimColor: true, children: [t("waiting")] })
       : Box({ flexDirection: "row", columnGap: 1, alignItems: "center", children: [...buttons, Text({ wrap: "truncate", dimColor: true, children: [help] })] })

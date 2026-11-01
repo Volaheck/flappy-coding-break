@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.0
+
+- Restyle the game after Flappy Duck in every app: an animated duck pilot in its plane, columns of crates, a radial blue sky over a two-layer city skyline, and a band of clouds to land on.
+- Bring Flappy Duck's interface: the score pill, a dimmed result screen with the score, a new-record badge, a phrase for the round and the best score, and the agent's status on the clouds. Claude Desktop veils its scenery and darkens the moving board to the same effect.
+- Collide as drawn: crates are exactly as wide as their column, and the duck hits through its plane and its body instead of a circle.
+- Add `scripts/import-duck-art.mjs`, which re-imports the art from a Flappy Duck checkout.
+
 ## 1.4.0
 
 - Draw the Claude Desktop game like the Canvas version: a smooth, tilting bird rasterised with anti-aliased edges, gradient pipes and slanted grass over the still SVG scenery.

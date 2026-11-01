@@ -1,17 +1,43 @@
 import { constants } from "./core.js"
+import { CITY, CLOUDS } from "./art.js"
+import { DUCK_PIXELS, duckFrame } from "./duck.js"
+import { CITY_OFFSETS, hexToRgb, mixRgb, outlineAt, rgbToHex, wrap } from "./field.js"
+import { THEME } from "./theme.js"
 
-const PARALLAX = 0.25
-
-const palette = {
-  sky: "#71cdd6", cloud: "#e8f8f4", city: "#a7ddd6", bush: "#5fcf6e",
-  grass: "#73bf2e", grassLight: "#9ce35c", dirt: "#ded895", dirtDark: "#c8bd70",
-  edge: "#2f5314", pipe: "#74bf2e", shine: "#a5e866", shade: "#4b861d",
-  bird: "#f8c63f", belly: "#fbe28f", outline: "#3b2a20", wing: "#fff6dc",
-  beak: "#f6662b", eye: "#ffffff",
-}
+const { GROUND_Y, BIRD_X, DUCK_SIZE, PIPE_W, GAP } = constants
+const ART = THEME.artScale
+const CRATE = THEME.crate
+const SKY = [hexToRgb(THEME.sky.inner), hexToRgb(THEME.sky.outer)]
+// The sky's radial fade in a few steps, so neighbouring cells share a colour and a terminal line stays short.
+const SKY_STEPS = Array.from({ length: 7 }, (_, step) => rgbToHex(mixRgb(SKY[0], SKY[1], step / 6)))
 
 export function drawBoard(game, columns, rows, elements) {
   return halfBlockLines(paint(game, columns, rows * 2), columns, rows * 2, elements)
+}
+
+const grids = new WeakMap()
+
+// A duck frame as one colour (or nothing) per pixel, for sampling at terminal resolution.
+function duckGrid(frame) {
+  let grid = grids.get(frame)
+  if (grid) return grid
+  grid = frame.map((runs) => {
+    const row = []
+    for (const run of runs) {
+      const color = run.hex ?? (run.rgb && run.alpha >= 0.5 ? rgbToHex(run.rgb) : null)
+      for (let index = 0; index < run.length; index++) row.push(color)
+    }
+    return row
+  })
+  grids.set(frame, grid)
+  return grid
+}
+
+function crateColor(u, v) {
+  if (v < 2) return CRATE.light
+  if (v >= 50) return CRATE.seam
+  if (u < 7 || u >= 45 || v < 7 || v >= 45) return CRATE.face
+  return CRATE.panel
 }
 
 function paint(game, width, height) {
@@ -21,71 +47,38 @@ function paint(game, width, height) {
   const right = left + Math.ceil(field * scale)
   const top = (height / scale - constants.WORLD_H) * constants.TOP_SHARE
   const pixels = new Array(width * height).fill(null)
-  for (let row = 0; row < height; row++) pixels.fill(palette.sky, row * width + left, row * width + right)
-  const toX = (x) => left + x * scale
-  const toY = (y) => (y + top) * scale
-  const rect = (x, y, w, h, color) => {
-    const x0 = Math.max(left, Math.floor(toX(x)))
-    const x1 = Math.min(right, Math.ceil(toX(x + w)))
-    const y0 = Math.max(0, Math.floor(toY(y)))
-    const y1 = Math.min(height, Math.ceil(toY(y + h)))
-    if (x1 <= x0) return
-    for (let row = y0; row < y1; row++) pixels.fill(color, row * width + x0, row * width + x1)
-  }
-  const ellipse = (cx, cy, rx, ry, color) => {
-    for (let row = Math.max(0, Math.floor(toY(cy - ry))); row < Math.min(height, Math.ceil(toY(cy + ry))); row++) {
-      for (let col = Math.max(left, Math.floor(toX(cx - rx))); col < Math.min(right, Math.ceil(toX(cx + rx))); col++) {
-        const x = (col + 0.5 - left) / scale
-        const y = (row + 0.5) / scale - top
-        if ((x - cx) ** 2 / rx ** 2 + (y - cy) ** 2 / ry ** 2 <= 1) pixels[row * width + col] = color
+  const span = height / scale
+  const grid = duckGrid(duckFrame(game))
+  const pixel = DUCK_SIZE / DUCK_PIXELS
+  for (let column = left; column < right; column++) {
+    const x = (column + 0.5 - left) / scale
+    const band = THEME.band.y + outlineAt(CLOUDS.points, wrap(x / ART, CLOUDS.width)) * ART
+    const cities = CITY.map((layer, index) => THEME.city.base - (layer.height - outlineAt(layer.points, wrap((x - CITY_OFFSETS[index]) / ART, layer.width))) * ART)
+    const pipe = game.pipes.find((entry) => x >= entry.x - game.scroll && x < entry.x - game.scroll + PIPE_W)
+    for (let row = 0; row < height; row++) {
+      const y = (row + 0.5) / scale - top
+      let color
+      const duckX = Math.floor((x - BIRD_X + DUCK_SIZE / 2) / pixel)
+      const duckY = Math.floor((y - game.bird.y + DUCK_SIZE / 2) / pixel)
+      if (duckY >= 0 && duckY < grid.length && duckX >= 0) color = grid[duckY][duckX]
+      if (!color && pipe && y < GROUND_Y + 6) {
+        const gapTop = pipe.gap - GAP / 2
+        const gapBottom = pipe.gap + GAP / 2
+        if (y < gapTop) color = crateColor(x - pipe.x + game.scroll, wrap(y - gapTop, PIPE_W))
+        else if (y > gapBottom) color = crateColor(x - pipe.x + game.scroll, wrap(y - gapBottom, PIPE_W))
       }
+      if (!color) {
+        if (y >= band) color = THEME.band.color
+        else if (y >= cities[1]) color = CITY[1].color
+        else if (y >= cities[0]) color = CITY[0].color
+        else {
+          const distance = Math.hypot((x - field / 2) / (field / 2), (y + top - span / 2) / (span / 2))
+          color = SKY_STEPS[Math.max(0, Math.min(6, Math.round(((distance - 0.5) / 0.5) * 6)))]
+        }
+      }
+      pixels[row * width + column] = color
     }
   }
-  for (let index = -1; index < Math.ceil(field / 112) + 1; index++) {
-    const x = index * 112 - ((game.scroll * PARALLAX) % 112)
-    ellipse(x + 45, 290, 50, 25, palette.cloud)
-    rect(x + 12, 300, 82, 18, palette.cloud)
-    rect(x + 10, 338 - (index % 2) * 14, 44, 62, palette.city)
-    ellipse(x + 45, 387, 55, 25, palette.bush)
-  }
-  for (const pipe of game.pipes) {
-    const x = pipe.x - game.scroll
-    const gapTop = pipe.gap - constants.GAP / 2
-    const gapBottom = pipe.gap + constants.GAP / 2
-    for (const [y, h] of [[-top, gapTop + top], [gapBottom, constants.GROUND_Y - gapBottom]]) {
-      rect(x, y, constants.PIPE_W, h, palette.edge)
-      rect(x + 4, y, constants.PIPE_W - 8, h, palette.pipe)
-      rect(x + 7, y, 8, h, palette.shine)
-      rect(x + constants.PIPE_W - 12, y, 7, h, palette.shade)
-    }
-    for (const y of [gapTop - constants.CAP_H, gapBottom]) {
-      rect(x - constants.CAP_OVER, y, constants.CAP_W, constants.CAP_H, palette.edge)
-      rect(x - constants.CAP_OVER + 4, y + 4, constants.CAP_W - 8, constants.CAP_H - 8, palette.pipe)
-      rect(x + 3, y + 4, 10, constants.CAP_H - 8, palette.shine)
-    }
-  }
-  const below = height / scale
-  rect(0, constants.GROUND_Y, field, below, palette.dirt)
-  rect(0, constants.GROUND_Y, field, 5, palette.edge)
-  rect(0, constants.GROUND_Y + 5, field, 14, palette.grassLight)
-  rect(0, constants.GROUND_Y + 19, field, 7, palette.grass)
-  for (let x = -24; x < field + 24; x += 24) {
-    rect(x - (game.scroll % 24), constants.GROUND_Y + 7, 12, 9, palette.grass)
-    rect(x, constants.GROUND_Y + 43, 3, 3, palette.dirtDark)
-    rect(x + 12, constants.GROUND_Y + 73, 3, 3, palette.dirtDark)
-  }
-  const bx = constants.BIRD_X
-  const by = game.bird.y
-  const flap = Math.sin(game.bird.wing * Math.PI) * 3
-  ellipse(bx, by, 21, 16, palette.outline)
-  ellipse(bx, by, 18, 13, palette.bird)
-  ellipse(bx + 2, by + 7, 13, 5, palette.belly)
-  ellipse(bx - 9, by + flap, 9, 6, palette.outline)
-  ellipse(bx - 9, by + flap, 7, 4, palette.wing)
-  ellipse(bx + 9, by - 6, 7, 7, palette.eye)
-  rect(bx + 11, by - 8, 3, 5, palette.outline)
-  rect(bx + 14, by + 1, 13, 8, palette.outline)
-  rect(bx + 15, by + 2, 11, 6, palette.beak)
   return pixels
 }
 
