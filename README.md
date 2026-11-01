@@ -14,54 +14,59 @@ The game never opens an external browser or window. The Codex CLI and Claude Cod
 
 ## Install
 
-Install Node.js 20+ and the CLI for each selected harness. Then run:
+Use your app's native plugin manager. Run the commands below in your terminal with that app's CLI on `PATH`.
 
-```sh
-npx github:Volaheck/flappy-coding-break install --all
-```
-
-Or select only the apps you use:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --codex
-npx github:Volaheck/flappy-coding-break install --claude --opencode
-```
-
-The installer uses the native plugin managers. It checks every selected CLI before changing anything, preserves existing configuration, and installs from the GitHub repository into the managers' persistent caches. It does not rely on the temporary `npx` directory.
-
-`--all` requires all three CLIs on `PATH`. If you only have a desktop app, install or expose its CLI first. Claude's one-command marketplace installation requires Claude Code 2.1.292+.
-
-Review the commands or check your installation without making changes:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all --dry-run
-npx github:Volaheck/flappy-coding-break doctor --codex
-```
-
-Restart the selected app or reload its plugins after installation. In Codex, review and trust this plugin's hooks using `/hooks` in the CLI or the app's hook controls. Installing a plugin does not grant hook trust. New or changed hook definitions can require another review.
-
-### Native installation
-
-OpenCode:
+### OpenCode Desktop
 
 ```sh
 opencode plugin add github:Volaheck/flappy-coding-break
 ```
 
-Claude Code:
+Requires OpenCode Desktop 2.2+. Restart Desktop or reload the plugin after installation. See the [OpenCode plugin documentation](https://dev.opencode.ai/v2/docs/plugins#manage).
+
+The npm package retains its original name, `opencode-flappybird`, for compatibility. After the corresponding version is published, `opencode plugin add opencode-flappybird` remains supported. The exported `./gui-experimental` entrypoint remains a single self-contained CommonJS bundle.
+
+### Claude Code
 
 ```sh
 claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
 ```
 
-Codex:
+This command adds the marketplace and installs the plugin in one step. Requires Claude Code 2.1.292+. Start a new session after installation.
+
+You can also install from inside Claude Code:
+
+```text
+/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+```
+
+The in-session command is supported from 2.1.275 and asks you to confirm the marketplace and installation scope. See the [Claude plugin documentation](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command).
+
+### Codex Desktop
 
 ```sh
 codex plugin marketplace add Volaheck/flappy-coding-break
 codex plugin add flappy-coding-break@flappy-coding-break
 ```
 
-The npm package retains its original name, `opencode-flappybird`, for compatibility. After the corresponding version is published, `opencode plugin add opencode-flappybird` remains supported. The exported `./gui-experimental` entrypoint remains a single self-contained CommonJS bundle.
+Codex requires two native steps: register the marketplace once, then install the plugin by name. Its `plugin add --marketplace` flag takes a registered marketplace name, not a GitHub repository. See the [Codex command reference](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
+
+Requires Node.js 20+ on `PATH` for the local MCP server and a Codex desktop version with MCP Apps UI. Restart the app after installation. Review and trust this plugin's hooks using `/hooks` in the CLI or the app's hook controls. Installing a plugin does not grant hook trust; changed hook definitions can require another review.
+
+### Optional: install in several apps together
+
+The Node.js 20+ helper runs these same native commands and checks all selected CLIs before installing anything. `--all` requires all three CLIs on `PATH`; you can select individual apps with `--opencode`, `--claude`, or `--codex`.
+
+```sh
+npx github:Volaheck/flappy-coding-break install --all
+```
+
+It installs into the native managers' persistent caches, preserves existing configuration, and does not depend on the temporary `npx` directory. To preview the commands or check CLI support without installing:
+
+```sh
+npx github:Volaheck/flappy-coding-break install --all --dry-run
+npx github:Volaheck/flappy-coding-break doctor --codex
+```
 
 ## Play
 

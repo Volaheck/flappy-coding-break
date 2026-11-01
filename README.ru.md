@@ -14,54 +14,59 @@
 
 ## Установка
 
-Нужен Node.js 20+ и CLI каждого выбранного приложения:
+Используй штатный менеджер плагинов своего приложения. Команды ниже выполняются в терминале; CLI выбранного приложения должен быть в `PATH`.
 
-```sh
-npx github:Volaheck/flappy-coding-break install --all
-```
-
-Можно выбрать приложения:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --codex
-npx github:Volaheck/flappy-coding-break install --claude --opencode
-```
-
-Установщик использует родные менеджеры плагинов. Перед изменениями проверяются все выбранные CLI. Существующие настройки сохраняются, а менеджеры скачивают плагин из GitHub в собственные постоянные каталоги. Временная папка `npx` не нужна для дальнейшей работы.
-
-Для `--all` все три CLI должны быть в `PATH`. Если установлено только desktop-приложение, сначала установи или добавь в `PATH` его CLI. Установка Claude вместе с marketplace одной командой требует Claude Code 2.1.292+.
-
-Посмотреть команды или проверить окружение без изменений:
-
-```sh
-npx github:Volaheck/flappy-coding-break install --all --dry-run
-npx github:Volaheck/flappy-coding-break doctor --codex
-```
-
-После установки перезапусти приложение или перезагрузи плагины. В Codex проверь и разреши хуки плагина через `/hooks` в CLI или настройки хуков приложения. Установка плагина сама по себе не выдаёт доверие хукам; после изменения их определений может потребоваться повторная проверка.
-
-### Родные команды
-
-OpenCode:
+### OpenCode Desktop
 
 ```sh
 opencode plugin add github:Volaheck/flappy-coding-break
 ```
 
-Claude Code:
+Нужен OpenCode Desktop 2.2+. После установки перезапусти Desktop или перезагрузи плагин. См. [документацию плагинов OpenCode](https://dev.opencode.ai/v2/docs/plugins#manage).
+
+Имя npm-пакета сохранено: `opencode-flappybird`. После публикации соответствующей версии команда `opencode plugin add opencode-flappybird` продолжит работать. Экспорт `./gui-experimental` по-прежнему указывает на один готовый CommonJS-файл.
+
+### Claude Code
 
 ```sh
 claude plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
 ```
 
-Codex:
+Команда добавляет marketplace и устанавливает плагин за один шаг. Нужен Claude Code 2.1.292+. После установки начни новую сессию.
+
+Можно установить прямо внутри Claude Code:
+
+```text
+/plugin install flappy-coding-break --marketplace Volaheck/flappy-coding-break
+```
+
+Команда внутри сессии поддерживается с версии 2.1.275 и предлагает подтвердить marketplace и область установки. См. [документацию плагинов Claude](https://code.claude.com/docs/en/discover-plugins#add-a-marketplace-and-install-in-one-command).
+
+### Codex Desktop
 
 ```sh
 codex plugin marketplace add Volaheck/flappy-coding-break
 codex plugin add flappy-coding-break@flappy-coding-break
 ```
 
-Имя npm-пакета сохранено: `opencode-flappybird`. После публикации соответствующей версии команда `opencode plugin add opencode-flappybird` продолжит работать. Экспорт `./gui-experimental` по-прежнему указывает на один готовый CommonJS-файл.
+В Codex установка состоит из двух штатных шагов: один раз добавить marketplace, затем установить плагин по имени. Флаг `plugin add --marketplace` принимает имя уже добавленного marketplace, а не адрес GitHub-репозитория. См. [справочник команд Codex](https://learn.chatgpt.com/docs/developer-commands#codex-plugin).
+
+Для локального MCP-сервера нужен Node.js 20+ в `PATH`, а для игры — desktop-версия Codex с MCP Apps UI. После установки перезапусти приложение. Проверь и разреши хуки плагина через `/hooks` в CLI или настройки хуков приложения. Установка плагина сама по себе не выдаёт доверие хукам; после изменения их определений может потребоваться повторная проверка.
+
+### Дополнительно: установка в несколько приложений сразу
+
+Вспомогательный установщик на Node.js 20+ запускает те же штатные команды и перед установкой проверяет все выбранные CLI. Для `--all` все три CLI должны быть в `PATH`; отдельные приложения выбираются флагами `--opencode`, `--claude` и `--codex`.
+
+```sh
+npx github:Volaheck/flappy-coding-break install --all
+```
+
+Плагин ставится в постоянные каталоги родных менеджеров, существующие настройки сохраняются, временная папка `npx` не нужна для дальнейшей работы. Посмотреть команды или проверить поддержку CLI без установки:
+
+```sh
+npx github:Volaheck/flappy-coding-break install --all --dry-run
+npx github:Volaheck/flappy-coding-break doctor --codex
+```
 
 ## Использование
 
