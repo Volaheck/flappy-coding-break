@@ -20,9 +20,26 @@ function identifier(value) {
   return typeof value === "string" && value.length > 0 && value.length <= 256 ? value : null
 }
 
+const BUSY = new Set(["EPERM", "EACCES", "EBUSY"])
+const RETRIES = 50
+
+// Windows refuses for a moment to open or replace a file that another hook process holds: parallel hooks
+// read a turn's record while others replace it. Ride such moments out with short, growing pauses, as
+// graceful-fs does; other errors, and a refusal that outlasts the retries, still throw.
+function patiently(action) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return action()
+    } catch (error) {
+      if (!BUSY.has(error.code) || attempt >= RETRIES) throw error
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(100, 2 + attempt * 4))
+    }
+  }
+}
+
 function readJson(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"))
+    return JSON.parse(patiently(() => fs.readFileSync(file, "utf8")))
   } catch (error) {
     if (error.code === "ENOENT" || error instanceof SyntaxError) return null
     throw error
@@ -33,7 +50,12 @@ function writeJson(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 })
   const temporary = `${file}.${randomUUID()}.tmp`
   fs.writeFileSync(temporary, JSON.stringify(value), { mode: 0o600 })
-  fs.renameSync(temporary, file)
+  try {
+    patiently(() => fs.renameSync(temporary, file))
+  } catch (error) {
+    fs.rmSync(temporary, { force: true })
+    throw error
+  }
 }
 
 function startTime(turn) {

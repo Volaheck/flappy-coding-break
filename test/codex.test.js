@@ -151,6 +151,27 @@ test("legacy chat-level markers do not suppress new turn openings", (t) => {
   assert.equal(readStatus("chat-a", directory).activeTurns, 1)
 })
 
+test("state survives Windows briefly refusing to read or replace a record another hook holds", (t) => {
+  const directory = stateDirectory(t)
+  const refuse = (method, code) => {
+    const original = fs[method]
+    let refusals = 3
+    t.mock.method(fs, method, (...args) => {
+      if (refusals > 0 && String(args[0]).includes(`${path.sep}turns${path.sep}`)) {
+        refusals--
+        throw Object.assign(new Error(`${code}: busy`), { code })
+      }
+      return original(...args)
+    })
+  }
+  refuse("renameSync", "EPERM")
+  applyEvent(event("UserPromptSubmit", "chat-a", "turn-a"), directory)
+  refuse("readFileSync", "EBUSY")
+  applyEvent(event("Stop", "chat-a", "turn-a"), directory)
+  assert.deepEqual({ ...readStatus("chat-a", directory), updatedAt: 0 }, { state: "response-ended", activeTurns: 0, updatedAt: 0 })
+  assert.deepEqual(fs.readdirSync(directory, { recursive: true }).filter((name) => String(name).endsWith(".tmp")), [])
+})
+
 test("parallel hook retries request one opening per turn while tracking only the current main turn", async (t) => {
   const directory = stateDirectory(t)
   const invoke = (turn) => new Promise((resolve, reject) => {

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.5.3
+
+- Codex on Windows: hooks running in parallel no longer fail when Windows briefly refuses to read or replace a turn record another hook holds; state reads and writes retry such moments, as graceful-fs does. This also turns the Windows CI jobs green again.
+
 ## 1.5.2
 
 - Claude: play only while the agent works. With no turn running (before the first one, after an answer, or after the plugin reloads or the app restarts) the round stays locked with "Play again when the agent starts working", and the status reads "Waiting for the agent" until a turn starts.
